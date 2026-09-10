@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react'
-import { BrowserRouter as Router, Link, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter as Router, Link, NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { Container, Nav, Navbar } from 'react-bootstrap'
 
 import { appPath, TAGLINE } from './appConfig'
@@ -92,9 +92,12 @@ function AppShell({ session, children }) {
           <Navbar.Collapse id="presign-nav">
             <Nav className="me-auto">
               {NAV_ITEMS.map(item => (
+                // NavLink, not Link: it adds the `active` class on a match, which
+                // is the only thing marking which page you are on. Not `end`, so
+                // a nested route (/s3world/object) keeps its parent highlighted.
                 <Nav.Link
                   key={item.path}
-                  as={Link}
+                  as={NavLink}
                   to={appPath(item.path)}
                   onMouseEnter={() => prefetch(item.load)}
                   onFocus={() => prefetch(item.load)}

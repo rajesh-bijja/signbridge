@@ -6,7 +6,7 @@ Guidance for AI assistants working in this repository. These instructions descri
 
 **SignBridge** is a self-hosted tool for **presigning and invoking AWS and generic REST APIs**. It performs AWS SigV4 signing across four credential sources — IAM user keys, AWS SSO / IAM Identity Center roles, an EC2 instance's own attached role (read over SSH + IMDSv2), and EKS IRSA service-account roles — produces presigned URLs (including for non-S3 AWS APIs), and can invoke endpoints directly. It also supports non-AWS REST calls (Basic auth, Bearer token, and unsigned "generic" requests). **Sandbox mode** adds a third way in: write Python/JS/TS/Java in an in-app IDE and run it against the same profiles in a throwaway container. **S3 World** adds a fourth: a bucket browser that can *show you what is inside an object* — parquet as a table, xlsx sheets, gzipped logs as text, archive listings — with a recursive, forgiving search the console does not have.
 
-- **Tagline**: *Presign URLs. Invoke APIs. Bridge IAM & SSO roles.*
+- **Tagline**: *Presign URLs. Invoke APIs. Read S3 objects.*
 - **Signing engine name**: **SignBridge** (the `lib/` code).
 - **Positioning**: think "Postman for AWS SigV4" — native SSO/IAM Identity Center signing, self-hostable/air-gapped, with MCP/IDE integration and optional AI chat.
 

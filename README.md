@@ -4,7 +4,7 @@
        those same SVGs, so they cannot drift. -->
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/signbridge-wordmark-dark.png" />
-    <img src="assets/signbridge-wordmark.png" alt="SignBridge — Presign URLs. Invoke APIs. Bridge IAM & SSO roles." width="560" />
+    <img src="assets/signbridge-wordmark.png" alt="SignBridge — Presign URLs. Invoke APIs. Read S3 objects." width="560" />
   </picture>
 </p>
 

@@ -170,7 +170,7 @@ role="img" aria-label="SignBridge">
   <text x="270" y="178"
         font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
         font-size="30" font-weight="500" letter-spacing="0.5" fill="{tagline}">
-    Presign URLs. Invoke APIs. Bridge IAM &amp; SSO roles.
+    Presign URLs. Invoke APIs. Read S3 objects.
   </text>
 </svg>
 """
