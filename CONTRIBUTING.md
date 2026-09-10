@@ -39,6 +39,11 @@ Nothing is written inside the repo: all runtime state lives under
 
 ## Project conventions
 
+`AGENTS.md` is the long-form guide to this codebase — architecture, module
+responsibilities, and the reasoning behind the decisions that look odd. AI coding
+agents pick it up automatically; it is worth reading yourself before a larger
+change. The conventions below are the short version.
+
 - **Backend `lib/` is CommonJS** (`require` / `module.exports`, `"use strict"`).
   **Frontend and `mcp/` are ESM** (`import`). Match the file you're editing.
 - **Log through `lib/logger.js`, never `console`.** It is levelled, sends

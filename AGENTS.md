@@ -1,6 +1,6 @@
-# SignBridge — Claude AI Documentation
+# SignBridge — Agent Guide
 
-Guidance for AI assistants working in this repository. These instructions describe **SignBridge** specifically.
+Guidance for AI coding agents (Claude Code, Cursor, Codex, or any other) working in this repository. These instructions describe **SignBridge** specifically. Named `AGENTS.md` on purpose: the file is the repo's guide, not one vendor's.
 
 ## What this project is
 
@@ -461,7 +461,7 @@ docker compose up --build -d
 **Sandbox mode:** no separate setup step. `docker compose up` builds the execution image via the one-shot `sandbox-image` service, which the app service waits on with `depends_on: { condition: service_completed_successfully }`; the image's default `CMD` prints its toolchain versions and exits 0, so it doubles as a build check. It is tagged `${SANDBOX_IMAGE:-signbridge-sandbox:latest}` and `pull_policy: build` keeps compose from trying to pull that local-only name. `npm run build:sandbox` (`./sandbox/build-sandbox-image.sh`) remains the manual path for a local `npm start` run. Either way Docker must be reachable from the server process. When SignBridge runs in a container that means bind-mounting the daemon socket (`-v /var/run/docker.sock:/var/run/docker.sock`) and setting `SANDBOX_HOST_BASE_DIR`; `docker-compose.yml` does this, and `docker-entrypoint.sh` adds `www-data` to the socket's group (by gid, not `chmod 666`). Mounting the socket is a privileged grant — opt out by removing the volume from `docker-compose.yml`. `server.js` runs `sandboxRunner.preflight()` at startup and logs whether Sandbox is ready; the Sandbox page reports the same, so a missing image or socket never fails silently.
 
 **MCP:** two transports over the same tool set (`mcp/tools.mjs`), both thin clients of the HTTPS API (so the main server must be running):
-- **HTTP (single service):** already served by `node server.js` — point an HTTP-capable MCP client at **`http://localhost:2444/signbridge/mcp`**, and note the port: 2444, not 2443, and `http`, not `https`. Same in-process endpoint, served twice (see **The cleartext MCP listener** below). Nothing else to run.
+- **HTTP (single service):** already served by `node server.js` — point an HTTP-capable MCP client at **`http://localhost:2444/signbridge/mcp`**, and note the port: 2444, not 2443, and `http`, not `https`. Same in-process endpoint, served twice (see **The cleartext MCP listener** under Backend architecture for why). Nothing else to run.
 - **stdio (Claude Desktop / Cursor / Codex):** `mcp/` is published as the **`signbridge-mcp`** npm package, so the client config is `"command": "npx", "args": ["-y", "signbridge-mcp"]` with optional `SIGNBRIDGE_API_BASE` / `SIGNBRIDGE_USER` env (both default to the local install). From a clone: `node /abs/path/mcp/server.js`. From the repo without cloning: `github:rajesh-bijja/signbridge#main::path:mcp` — **`::path:` is the subdirectory separator**; `#main:mcp` parses as a git spec with no committish and no subdir, so npm installs the repository root, which has no `signbridge-mcp` bin, and the client reports only that it could not determine an executable. `mcp/README.md` is the npm package page (shipped in `files`, so it must exist); the root README's "MCP Server" section carries the full client snippets.
 
 Four invariants of that package, all pinned by `test/mcpPackaging.test.js` because each one works in this checkout and breaks only once installed:
