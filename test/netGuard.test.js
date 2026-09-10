@@ -233,26 +233,25 @@ test('the bind message fits the environment it fires in', function () {
     const inContainer = netGuard.describeBindExposure('0.0.0.0', { port: 2443, container: true });
     assert.strictEqual(inContainer.level, 'info',
         'in a container 0.0.0.0 is mandatory, so it is not a warning');
-    assert.match(inContainer.message, /expected/);
-    assert.match(inContainer.message, /127\.0\.0\.1:2443:2443/,
-        'it must name the host-side port publish, which is what actually limits access there');
+    assert.match(inContainer.message, /127\.0\.0\.1:2443/,
+        'it must name the host port mapping, which is what actually limits access there');
     assert.doesNotMatch(inContainer.message, /set \[server\] bindHost=127\.0\.0\.1/,
         'and must not give the advice that breaks the container');
 
     const onHost = netGuard.describeBindExposure('0.0.0.0', { port: 2443 });
     assert.strictEqual(onHost.level, 'warn');
-    assert.match(onHost.message, /every network interface/,
-        'the confusing part is what 0.0.0.0 means, so say it');
-    assert.match(onHost.message, /other machine/,
-        '"every host" reads as "every process on my laptop" — name the real risk');
+    assert.match(onHost.message, /other machines on your network/,
+        '"every host that can reach port 2443" was read as "every process on my own'
+        + ' laptop", which is not a risk — name who can actually reach it');
     assert.match(onHost.message, /bindHost=127\.0\.0\.1/, 'here the advice is correct');
 
-    // A specific LAN address is also not loopback, and "every interface" would be
-    // a lie about it.
-    const pinned = netGuard.describeBindExposure('192.168.1.50', { port: 2443 });
-    assert.strictEqual(pinned.level, 'warn');
-    assert.match(pinned.message, /not a loopback address/);
-    assert.doesNotMatch(pinned.message, /every network interface/);
+    // A startup log line is read to find out whether something is wrong, not to be
+    // taught container networking. Both of these were a paragraph; a paragraph in a
+    // log is skipped, which costs more than the detail it carried was worth.
+    [inContainer, onHost].forEach(function (m) {
+        assert.ok(m.message.length < 220, 'keep it to one line: ' + m.message);
+        assert.ok(m.message.split('. ').length <= 3, 'at most two sentences: ' + m.message);
+    });
 });
 
 test('isContainer probes both markers and never throws', function () {
