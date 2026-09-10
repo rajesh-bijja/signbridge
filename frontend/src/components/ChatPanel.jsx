@@ -471,9 +471,14 @@ export default function ChatPanel({
         <div>
           <strong>SignBridge Chat</strong>
           <div className="small text-muted">
+            {/* An AWS profile is not a prerequisite for chatting — only for a turn
+                that actually signs or invokes a request, and the agent asks for one
+                then. So the fallback says what will happen, not what is missing:
+                "no dashboard profile selected" read as a setup step the user had
+                skipped, and named a selector this page does not even have. */}
             {activeProfile?.profileName
-              ? `profile: ${activeProfile.profileName} (${activeProfile.authnMode})`
-              : 'no dashboard profile selected — I\'ll ask which to use'}
+              ? `signing with ${activeProfile.profileName} (${activeProfile.authnMode})`
+              : 'I\'ll ask which AWS profile to use when a request needs one'}
           </div>
         </div>
         <div className="d-flex align-items-center gap-2">
