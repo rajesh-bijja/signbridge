@@ -149,6 +149,20 @@ list, a notebook as cells, JSON/XML/YAML as a navigable tree. Search is recursiv
 case-insensitive and matches **anywhere** in the key — and it finds folders, including
 empty ones. See [S3 World](#s3-world) for the full format list and search syntax.
 
+Every object you open carries the same four actions — and one of them is a link that
+expires:
+
+<p align="center">
+  <img src="assets/screenshots/presigned-link.png" alt="An S3 object viewer's action bar — Open in new tab, Presigned link, Download, Copy — with the Presigned link menu open on Copy a link valid for… 5 minutes, 1 hour, 12 hours, Custom…" width="542" />
+</p>
+
+***Open in new tab** for anything the browser renders natively, **Download**, **Copy**
+for the decoded text, and **Presigned link** — 5 minutes, 1 hour, 12 hours, or
+**Custom…**, anything from 1 minute up to the 12-hour maximum AWS SigV4 allows. The
+confirmation reports the lifetime the link **actually** got, which matters on an SSO
+profile: a presigned URL cannot outlive the session credentials that signed it, so
+SignBridge caps it rather than promising an hour it cannot honor.*
+
 ### Chat — say it in English, it drives the same actions
 
 ![SignBridge Chat: a session list on the left, and an answer to "Show my last 3 requests and their status" rendered as a table of method, profile, auth mechanism, time and status](assets/screenshots/chat.png)
@@ -168,18 +182,6 @@ then lists the models that key can actually reach. Stored encrypted (AES-256-GCM
 your machine — there is no config file and no environment variable that can supply a
 key instead. **AWS Bedrock needs no key at all**: sign with an AWS profile you already
 have here. See [Bring your own LLM](#bring-your-own-llm).*
-
-### Share what you're looking at — a link that expires
-
-<p align="center">
-  <img src="assets/screenshots/presigned-link.png" alt="An object viewer's action bar — Open in new tab, Presigned link, Download, Copy — with the Presigned link menu open on Copy a link valid for… 5 minutes, 1 hour, 12 hours, Custom…" width="542" />
-</p>
-
-*Every object you open can leave as a presigned link: 5 minutes, 1 hour, 12 hours,
-or **Custom…** — anything from 1 minute up to the 12-hour maximum AWS SigV4 allows.
-The confirmation reports the lifetime the link **actually** got, which matters on an
-SSO profile: a presigned URL cannot outlive the session credentials that signed it,
-so SignBridge caps it rather than promising an hour it cannot honor.*
 
 ### Nothing you run is lost — history remembers the whole exchange
 
