@@ -4,6 +4,9 @@ import { Link } from 'react-router-dom'
 
 import { llmSettings, listLlmModels, selectLlmModel } from '../presignApi'
 import { filterModels, formatContextLength, formatModelPricing } from '../../llmProviders'
+// Routes live under the app's route prefix; a bare '/settings' hits the
+// catch-all and lands on the dashboard instead.
+import { appPath } from '../../appConfig'
 
 /**
  * The Cursor-style provider + model chip used by Chat and Sandbox.
@@ -159,7 +162,7 @@ function ModelPicker({ onChange, onStatus, disabled = false, size = 'sm', align 
     return (
       <Button
         as={Link}
-        to="/settings"
+        to={appPath('/settings')}
         variant="outline-warning"
         size={size}
         title={active?.message || 'No AI provider is connected yet'}
@@ -284,7 +287,7 @@ function ModelPicker({ onChange, onStatus, disabled = false, size = 'sm', align 
         </div>
 
         <Dropdown.Divider />
-        <Dropdown.Item as={Link} to="/settings" className="small">
+        <Dropdown.Item as={Link} to={appPath('/settings')} className="small">
           Manage providers &amp; keys in Settings
         </Dropdown.Item>
       </Dropdown.Menu>

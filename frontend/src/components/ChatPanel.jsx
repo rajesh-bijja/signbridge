@@ -12,6 +12,10 @@ import {
   updateSettingsDetails
 } from './presignApi'
 import { getSocket, getUserName } from './presignSocket'
+// Every route is mounted under the app's route prefix, so a bare '/settings'
+// matches nothing and the catch-all route sends the user to the dashboard —
+// which is what these two links used to do.
+import { appPath } from '../appConfig'
 import ModelPicker from './llm/ModelPicker.jsx'
 
 const WELCOME = {
@@ -539,7 +543,7 @@ export default function ChatPanel({
             <strong>Chat needs an AI provider.</strong>{' '}
             {llmStatus.message ||
               'Pick a provider and add its API key to start chatting.'}{' '}
-            <Alert.Link as={Link} to="/settings">
+            <Alert.Link as={Link} to={appPath('/settings')}>
               Open Settings → AI features
             </Alert.Link>
             . SignBridge never ships a key of its own, and there is no environment
@@ -554,7 +558,7 @@ export default function ChatPanel({
             {needsSetup ? (
               <>
                 {' '}
-                <Alert.Link as={Link} to="/settings">
+                <Alert.Link as={Link} to={appPath('/settings')}>
                   Open Settings to connect an AI provider
                 </Alert.Link>
               </>
