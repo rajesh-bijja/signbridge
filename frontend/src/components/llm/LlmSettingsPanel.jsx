@@ -6,6 +6,7 @@ import {
   Box,
   Button,
   Container,
+  ExpandableSection,
   FormField,
   Header,
   Input,
@@ -157,6 +158,15 @@ function LlmSettingsPanel() {
   const [effortDraft, setEffortDraft] = useState('')
   const [temperatureDraft, setTemperatureDraft] = useState('0')
   const [iterationsDraft, setIterationsDraft] = useState('8')
+
+  // Which of the two sections is open. `null` on the provider section means "not
+  // touched yet", so it falls back to opening only when nothing is configured —
+  // set-up is the reason to be here on a fresh install, and a page of provider
+  // tiles is not what someone who came to flip one knob wants to scroll past.
+  // The drafts above live here rather than in the sections, so collapsing one
+  // cannot discard a half-typed value.
+  const [providerOpen, setProviderOpen] = useState(null)
+  const [behaviourOpen, setBehaviourOpen] = useState(false)
 
   const applyResponse = useCallback(data => {
     if (data && data.settings) setSettings(data.settings)
@@ -444,6 +454,7 @@ function LlmSettingsPanel() {
   }
 
   const status = providerStatus(config)
+  const providerExpanded = providerOpen === null ? !active?.ok : providerOpen
   const activeModelId =
     settings?.activeProviderId === selectedId ? settings.activeModel || '' : ''
   // The field shows the active model until the user starts typing. The id itself
@@ -528,370 +539,384 @@ function LlmSettingsPanel() {
                 exact next step. */}
             {!active?.ok && active?.message && <Alert type="warning">{active.message}</Alert>}
 
-            <FormField
-              label="Provider"
-              description="Pick the AI tool you have (or want) an API key for."
+            {/* Collapsible, and closed once a provider is working: the tiles plus
+                the selected provider's card are most of this page, and there is
+                nothing to do here again until you switch provider or rotate a
+                key. Collapsed, the header still says which provider answers and
+                whether it verified. */}
+            <ExpandableSection
+              variant="container"
+              expanded={providerExpanded}
+              onChange={({ detail }) => setProviderOpen(detail.expanded)}
+              headerText="Provider"
+              headerDescription="Pick the AI tool you have (or want) an API key for, then connect it."
+              headerActions={
+                !providerExpanded && provider && status ? (
+                  <StatusIndicator type={status.type}>
+                    {provider.label} · {status.text}
+                  </StatusIndicator>
+                ) : null
+              }
             >
-              <Tiles
-                columns={3}
-                value={selectedId}
-                onChange={({ detail }) => setSelectedId(detail.value)}
-                items={providers.map(p => {
-                  const c = settings?.providers?.[p.id]
-                  const tag = c?.verifiedOk
-                    ? ' ✓'
-                    : isConfigured(c)
-                      ? ' ·'
-                      : ''
-                  return {
-                    value: p.id,
-                    label: p.label + tag,
-                    description: tileDescription(p)
-                  }
-                })}
-              />
-            </FormField>
+              <SpaceBetween size="l">
+                <Tiles
+                  columns={3}
+                  value={selectedId}
+                  onChange={({ detail }) => setSelectedId(detail.value)}
+                  items={providers.map(p => {
+                    const c = settings?.providers?.[p.id]
+                    const tag = c?.verifiedOk
+                      ? ' ✓'
+                      : isConfigured(c)
+                        ? ' ·'
+                        : ''
+                    return {
+                      value: p.id,
+                      label: p.label + tag,
+                      description: tileDescription(p)
+                    }
+                  })}
+                />
 
-            {provider && (
-              <Container
-                header={
-                  <Header
-                    variant="h3"
-                    // Not acquisitionNote: that is the "how do I get a key"
-                    // instruction and it belongs beside option 2, not in the
-                    // header where it reads as advice to someone who already
-                    // has one.
-                    description={provider.docsNote || undefined}
-                    actions={
-                      status ? <StatusIndicator type={status.type}>{status.text}</StatusIndicator> : null
+                {provider && (
+                  <Container
+                    header={
+                      <Header
+                        variant="h3"
+                        // Not acquisitionNote: that is the "how do I get a key"
+                        // instruction and it belongs beside option 2, not in the
+                        // header where it reads as advice to someone who already
+                        // has one.
+                        description={provider.docsNote || undefined}
+                        actions={
+                          status ? <StatusIndicator type={status.type}>{status.text}</StatusIndicator> : null
+                        }
+                      >
+                        {provider.label}
+                      </Header>
                     }
                   >
-                    {provider.label}
-                  </Header>
-                }
-              >
-                <SpaceBetween size="m">
-                  {provider.inference === false && provider.inferenceNote && (
-                    <Alert type="info">{provider.inferenceNote}</Alert>
-                  )}
-                  {/* A provider answered by a module works differently enough that
-                      the card has to say so before the key field: it needs a CLI on
-                      this server, and it runs with tool approval forced. Neither is
-                      guessable from "paste your API key". */}
-                  {provider.chatBackend && provider.backendNote && (
-                    <Alert type="info" header={`How ${provider.label} answers`}>
-                      {provider.backendNote}
-                    </Alert>
-                  )}
-                  {/* A valid key says nothing about whether that CLI is present, so
-                      the two are reported separately — a missing CLI must not read
-                      as a rejected key, and vice versa. */}
-                  {backendStatus && !backendStatus.ok && (
-                    // The header names the provider rather than saying "not ready",
-                    // which left the user asking what was not ready and why.
-                    <Alert type="warning" header={`Chat cannot use ${provider.label} yet`}>
-                      {backendStatus.message}
-                    </Alert>
-                  )}
-                  {backendStatus?.ok && (
-                    <Box color="text-body-secondary" fontSize="body-s">
-                      Ready — <code>{backendStatus.cliBin}</code>
-                      {backendStatus.cliVersion ? ` ${backendStatus.cliVersion}` : ''} is installed
-                      on this server.
-                    </Box>
-                  )}
-                  {config?.verifiedError && !config.verifiedOk && (
-                    <Alert type="error">{config.verifiedError}</Alert>
-                  )}
-
-                  {provider.baseUrlEditable && (
-                    <FormField
-                      label={provider.baseUrlRequired ? 'Base URL *' : 'Base URL'}
-                      description={
-                        provider.baseUrlRequired
-                          ? 'Required for this provider — it has no shared endpoint.'
-                          : 'Leave as-is unless you run this behind a proxy or on another port.'
-                      }
-                    >
-                      <Input
-                        value={baseUrlDraft}
-                        onChange={({ detail }) => setBaseUrlDraft(detail.value)}
-                        placeholder={provider.baseUrlPlaceholder || provider.baseUrl}
-                      />
-                    </FormField>
-                  )}
-
-                  {/* How this provider authenticates. Rendered above the key card
-                      because it decides whether the key card is even relevant:
-                      signing with a profile needs no key at all. */}
-                  {hasSourceChoice && (
-                    <FormField
-                      label="How should SignBridge authenticate?"
-                      description="Bedrock accepts either. Signing with a profile keeps everything in your own AWS account and needs no key to create, rotate or store."
-                    >
-                      <SegmentedControl
-                        selectedId={sourceDraft}
-                        onChange={({ detail }) => setSourceDraft(detail.selectedId)}
-                        options={[
-                          { id: AWS_PROFILE, text: 'Sign with an AWS profile' },
-                          { id: API_KEY, text: 'Use a Bedrock API key' }
-                        ]}
-                      />
-                    </FormField>
-                  )}
-
-                  {/* Outside the profile block on purpose: the region is part of the
-                      Bedrock hostname, so it applies to an API key exactly as much
-                      as to a signing profile. Rendered only in the profile branch,
-                      an API-key user could not set it at all and was stuck with
-                      whatever region happened to be stored. */}
-                  {needsRegion && (
-                    <FormField
-                      label="Region"
-                      description="Bedrock model availability is per region, and model ids are region-scoped — so this is the region whose models you will see."
-                    >
-                      <Autosuggest
-                        value={regionDraft}
-                        onChange={({ detail }) => setRegionDraft(detail.value)}
-                        options={REGION_SUGGESTIONS.map(region => ({ value: region }))}
-                        placeholder={provider.awsRegionDefault || 'us-east-1'}
-                        enteredTextLabel={value => `Use "${value}"`}
-                        empty="Type any region"
-                      />
-                    </FormField>
-                  )}
-
-                  {usesProfile && (
                     <SpaceBetween size="m">
-                      {profilesError && (
-                        <Alert type="warning">Could not load your profiles: {profilesError}</Alert>
+                      {provider.inference === false && provider.inferenceNote && (
+                        <Alert type="info">{provider.inferenceNote}</Alert>
                       )}
-                      <FormField
-                        label="AWS profile"
-                        description="Any AWS profile you already have here — IAM user, SSO role, EC2 instance role or EKS IRSA service account. Credentials are minted per request, so short-lived ones refresh on their own mid-conversation."
-                      >
-                        <Select
-                          selectedOption={
-                            profileDraft ? { value: profileDraft, label: profileDraft } : null
-                          }
-                          onChange={({ detail }) => setProfileDraft(detail.selectedOption.value)}
-                          options={awsProfiles.map(entry => ({
-                            value: entry.profileName,
-                            label: entry.profileName,
-                            description: entry.modes.map(authnShortLabel).join(' · ')
-                          }))}
-                          placeholder="Choose a profile"
-                          filteringType="auto"
-                          empty="No AWS profiles yet — add one on the Profiles page"
-                        />
-                      </FormField>
+                      {/* A provider answered by a module works differently enough that
+                          the card has to say so before the key field: it needs a CLI on
+                          this server, and it runs with tool approval forced. Neither is
+                          guessable from "paste your API key". */}
+                      {provider.chatBackend && provider.backendNote && (
+                        <Alert type="info" header={`How ${provider.label} answers`}>
+                          {provider.backendNote}
+                        </Alert>
+                      )}
+                      {/* A valid key says nothing about whether that CLI is present, so
+                          the two are reported separately — a missing CLI must not read
+                          as a rejected key, and vice versa. */}
+                      {backendStatus && !backendStatus.ok && (
+                        // The header names the provider rather than saying "not ready",
+                        // which left the user asking what was not ready and why.
+                        <Alert type="warning" header={`Chat cannot use ${provider.label} yet`}>
+                          {backendStatus.message}
+                        </Alert>
+                      )}
+                      {backendStatus?.ok && (
+                        <Box color="text-body-secondary" fontSize="body-s">
+                          Ready — <code>{backendStatus.cliBin}</code>
+                          {backendStatus.cliVersion ? ` ${backendStatus.cliVersion}` : ''} is installed
+                          on this server.
+                        </Box>
+                      )}
+                      {config?.verifiedError && !config.verifiedOk && (
+                        <Alert type="error">{config.verifiedError}</Alert>
+                      )}
 
-                      {/* Only asked when the profile genuinely offers more than one
-                          mechanism; a single-mechanism profile answers it itself. */}
-                      {modesForProfile.length > 1 && (
-                        <FormField label="Mechanism">
-                          <Select
-                            selectedOption={
-                              modeDraft
-                                ? { value: modeDraft, label: authnShortLabel(modeDraft) }
-                                : null
-                            }
-                            onChange={({ detail }) => setModeDraft(detail.selectedOption.value)}
-                            options={modesForProfile.map(mode => ({
-                              value: mode,
-                              label: authnShortLabel(mode)
-                            }))}
+                      {provider.baseUrlEditable && (
+                        <FormField
+                          label={provider.baseUrlRequired ? 'Base URL *' : 'Base URL'}
+                          description={
+                            provider.baseUrlRequired
+                              ? 'Required for this provider — it has no shared endpoint.'
+                              : 'Leave as-is unless you run this behind a proxy or on another port.'
+                          }
+                        >
+                          <Input
+                            value={baseUrlDraft}
+                            onChange={({ detail }) => setBaseUrlDraft(detail.value)}
+                            placeholder={provider.baseUrlPlaceholder || provider.baseUrl}
                           />
                         </FormField>
                       )}
-                      {modesForProfile.length === 1 && (
-                        <Box color="text-body-secondary" fontSize="body-s">
-                          Signs as {authnShortLabel(modesForProfile[0])}.
-                        </Box>
+
+                      {/* How this provider authenticates. Rendered above the key card
+                          because it decides whether the key card is even relevant:
+                          signing with a profile needs no key at all. */}
+                      {hasSourceChoice && (
+                        <FormField
+                          label="How should SignBridge authenticate?"
+                          description="Bedrock accepts either. Signing with a profile keeps everything in your own AWS account and needs no key to create, rotate or store."
+                        >
+                          <SegmentedControl
+                            selectedId={sourceDraft}
+                            onChange={({ detail }) => setSourceDraft(detail.selectedId)}
+                            options={[
+                              { id: AWS_PROFILE, text: 'Sign with an AWS profile' },
+                              { id: API_KEY, text: 'Use a Bedrock API key' }
+                            ]}
+                          />
+                        </FormField>
                       )}
 
-                      <SpaceBetween direction="horizontal" size="xs">
-                        <Button
-                          variant="primary"
-                          loading={busy === 'test'}
-                          disabled={!profileDraft}
-                          onClick={handleTest}
+                      {/* Outside the profile block on purpose: the region is part of the
+                          Bedrock hostname, so it applies to an API key exactly as much
+                          as to a signing profile. Rendered only in the profile branch,
+                          an API-key user could not set it at all and was stuck with
+                          whatever region happened to be stored. */}
+                      {needsRegion && (
+                        <FormField
+                          label="Region"
+                          description="Bedrock model availability is per region, and model ids are region-scoped — so this is the region whose models you will see."
                         >
-                          Save &amp; test
-                        </Button>
-                      </SpaceBetween>
-                      <Box color="text-body-secondary" fontSize="body-s">
-                        The role needs <code>bedrock:InvokeModel</code> and{' '}
-                        <code>bedrock:InvokeModelWithResponseStream</code> on the models you use.
-                        Listing models (<code>bedrock:ListFoundationModels</code>) is a separate
-                        permission — without it a short list of current Claude models is offered
-                        instead, and you can type any other model id you have access to. Chat
-                        works either way.
-                      </Box>
-                    </SpaceBetween>
-                  )}
-
-                  {/* The whole setup, spelled out as two options, because the only
-                      question a new user has here is "where does the key come
-                      from?" and there are exactly two answers. Option 1 is the
-                      field; option 2 is a link to the provider's own console and
-                      an instruction to come back to option 1. Nothing in between:
-                      SignBridge does not create or exchange a provider key. */}
-                  {!provider.keyless && !usesProfile && (
-                    <SpaceBetween size="m">
-                      <Box variant="h5">Connect {provider.label}: do either one of these</Box>
-
-                      <FormField
-                        label="Option 1 — I already have an API key"
-                        description={
-                          config?.hasKey
-                            ? `A key is stored for ${provider.label} (${config.keyMask}). Paste a new one to replace it, or just re-test the stored one.`
-                            : `Paste it here and press Save & test. It is encrypted before it is written to disk and is never shown again.`
-                        }
-                      >
-                        <SpaceBetween size="xs">
-                          <Input
-                            type="password"
-                            value={keyDraft}
-                            onChange={({ detail }) => setKeyDraft(detail.value)}
-                            placeholder={provider.keyPlaceholder || 'Paste the API key'}
+                          <Autosuggest
+                            value={regionDraft}
+                            onChange={({ detail }) => setRegionDraft(detail.value)}
+                            options={REGION_SUGGESTIONS.map(region => ({ value: region }))}
+                            placeholder={provider.awsRegionDefault || 'us-east-1'}
+                            enteredTextLabel={value => `Use "${value}"`}
+                            empty="Type any region"
                           />
+                        </FormField>
+                      )}
+
+                      {usesProfile && (
+                        <SpaceBetween size="m">
+                          {profilesError && (
+                            <Alert type="warning">Could not load your profiles: {profilesError}</Alert>
+                          )}
+                          <FormField
+                            label="AWS profile"
+                            description="Any AWS profile you already have here — IAM user, SSO role, EC2 instance role or EKS IRSA service account. Credentials are minted per request, so short-lived ones refresh on their own mid-conversation."
+                          >
+                            <Select
+                              selectedOption={
+                                profileDraft ? { value: profileDraft, label: profileDraft } : null
+                              }
+                              onChange={({ detail }) => setProfileDraft(detail.selectedOption.value)}
+                              options={awsProfiles.map(entry => ({
+                                value: entry.profileName,
+                                label: entry.profileName,
+                                description: entry.modes.map(authnShortLabel).join(' · ')
+                              }))}
+                              placeholder="Choose a profile"
+                              filteringType="auto"
+                              empty="No AWS profiles yet — add one on the Profiles page"
+                            />
+                          </FormField>
+
+                          {/* Only asked when the profile genuinely offers more than one
+                              mechanism; a single-mechanism profile answers it itself. */}
+                          {modesForProfile.length > 1 && (
+                            <FormField label="Mechanism">
+                              <Select
+                                selectedOption={
+                                  modeDraft
+                                    ? { value: modeDraft, label: authnShortLabel(modeDraft) }
+                                    : null
+                                }
+                                onChange={({ detail }) => setModeDraft(detail.selectedOption.value)}
+                                options={modesForProfile.map(mode => ({
+                                  value: mode,
+                                  label: authnShortLabel(mode)
+                                }))}
+                              />
+                            </FormField>
+                          )}
+                          {modesForProfile.length === 1 && (
+                            <Box color="text-body-secondary" fontSize="body-s">
+                              Signs as {authnShortLabel(modesForProfile[0])}.
+                            </Box>
+                          )}
+
                           <SpaceBetween direction="horizontal" size="xs">
                             <Button
                               variant="primary"
                               loading={busy === 'test'}
-                              disabled={!keyDraft && !config?.hasKey}
+                              disabled={!profileDraft}
                               onClick={handleTest}
                             >
-                              {keyDraft ? 'Save & test' : 'Test the stored key'}
+                              Save &amp; test
                             </Button>
-                            {config?.hasKey && (
-                              <Button loading={busy === 'remove'} onClick={handleRemoveKey}>
-                                Remove key
-                              </Button>
-                            )}
                           </SpaceBetween>
+                          <Box color="text-body-secondary" fontSize="body-s">
+                            The role needs <code>bedrock:InvokeModel</code> and{' '}
+                            <code>bedrock:InvokeModelWithResponseStream</code> on the models you use.
+                            Listing models (<code>bedrock:ListFoundationModels</code>) is a separate
+                            permission — without it a short list of current Claude models is offered
+                            instead, and you can type any other model id you have access to. Chat
+                            works either way.
+                          </Box>
                         </SpaceBetween>
-                      </FormField>
-
-                      {provider.consoleUrl && (
-                        <FormField
-                          label="Option 2 — I don't have a key yet"
-                          description={`Create one in ${provider.label}'s own console, then come back and paste it into option 1. SignBridge deliberately does not create the key for you — it is your account, your key and your billing.`}
-                        >
-                          <SpaceBetween size="xs">
-                            <Link external href={provider.consoleUrl}>
-                              Open {provider.label} API keys
-                            </Link>
-                            {provider.acquisitionNote && (
-                              <Box color="text-body-secondary" fontSize="body-s">
-                                {provider.acquisitionNote}
-                              </Box>
-                            )}
-                          </SpaceBetween>
-                        </FormField>
                       )}
-                    </SpaceBetween>
-                  )}
 
-                  {provider.keyless && !usesProfile && (
-                    <SpaceBetween direction="horizontal" size="xs">
-                      <Button variant="primary" loading={busy === 'test'} onClick={handleTest}>
-                        Test connection
-                      </Button>
-                    </SpaceBetween>
-                  )}
+                      {/* The whole setup, spelled out as two options, because the only
+                          question a new user has here is "where does the key come
+                          from?" and there are exactly two answers. Option 1 is the
+                          field; option 2 is a link to the provider's own console and
+                          an instruction to come back to option 1. Nothing in between:
+                          SignBridge does not create or exchange a provider key. */}
+                      {!provider.keyless && !usesProfile && (
+                        <SpaceBetween size="m">
+                          <Box variant="h5">Connect {provider.label}: do either one of these</Box>
 
-                  {/* Models come last because they only exist once the key works. */}
-                  {config?.verifiedOk && provider.inference !== false && (
-                    <SpaceBetween size="m">
-                      <FormField
-                        label="Model"
-                        description={
-                          models.length
-                            ? modelsUnlistable
-                              ? 'These credentials cannot list models, so the list below is a few current ids rather than everything you can reach. Pick one — or type any model id you have access to and choose Use "…". A cross-region inference profile, a foundation model id and a provisioned-throughput ARN all work.'
-                              : `${models.length} chat models available${
-                                  config.modelsFetchedAt
-                                    ? `, listed ${new Date(config.modelsFetchedAt).toLocaleString()}`
-                                    : ''
-                                }. Type to search, or type an id the list does not show yet and choose Use "…".`
-                            : 'No chat models were returned for this key. Type the id of one you have access to and choose Use "…".'
-                        }
-                        secondaryControl={
-                          <Button
-                            iconName="refresh"
-                            loading={busy === 'models'}
-                            onClick={handleRefreshModels}
-                            ariaLabel="Refresh model list"
-                          />
-                        }
-                      >
-                        {/* One control, not a picker plus an "or type one" field
-                            beside it. Typing an id the list does not contain offers
-                            it as `Use "<id>"` at the top of the same dropdown, so
-                            choosing a listed model and reaching an unlisted one are
-                            the same gesture — which matters most for an identity
-                            that cannot list models at all, where the unlisted case
-                            is the normal one. Both go through selectLlmModel, and
-                            the server remembers an unlisted id, so there is no
-                            second code path. The id is deliberately not validated:
-                            an inference profile, a bare model name and a
-                            provisioned-throughput ARN look nothing alike, and a
-                            shape check would reject the model the user came for. */}
-                        <Autosuggest
-                          value={modelFieldValue}
-                          onChange={({ detail }) => setModelQuery(detail.value)}
-                          onSelect={({ detail }) => handleSelectModel(detail.value)}
-                          // Abandoning a half-typed id shows what is actually in use
-                          // again, rather than leaving the field asserting a model
-                          // nothing is configured with.
-                          onBlur={() => setModelQuery(null)}
-                          options={modelOptionGroups}
-                          enteredTextLabel={value => `Use "${value}"`}
-                          placeholder={modelIdPlaceholder}
-                          loadingText="Loading models"
-                          empty="No models to choose from — type the id of one you have access to"
-                          disabled={busy === 'select'}
-                          ariaLabel="Model"
-                        />
-                      </FormField>
-
-                      {/* Adding an id happens by choosing it above, so this exists
-                          only to forget one. Shown only when there is something to
-                          forget, and phrased as ownership rather than as a second
-                          way in. */}
-                      {customModels.length > 0 && (
-                        <FormField
-                          label="Model ids you typed in"
-                          description="Kept in the list above so they survive a reload and a refresh of the provider's list. Dismiss one to forget it."
-                        >
-                          <TokenGroup
-                            items={customModels.map(id => ({ label: id, dismissLabel: `Forget ${id}` }))}
-                            onDismiss={({ detail }) =>
-                              handleForgetCustomModel(customModels[detail.itemIndex])
+                          <FormField
+                            label="Option 1 — I already have an API key"
+                            description={
+                              config?.hasKey
+                                ? `A key is stored for ${provider.label} (${config.keyMask}). Paste a new one to replace it, or just re-test the stored one.`
+                                : `Paste it here and press Save & test. It is encrypted before it is written to disk and is never shown again.`
                             }
-                          />
-                        </FormField>
+                          >
+                            <SpaceBetween size="xs">
+                              <Input
+                                type="password"
+                                value={keyDraft}
+                                onChange={({ detail }) => setKeyDraft(detail.value)}
+                                placeholder={provider.keyPlaceholder || 'Paste the API key'}
+                              />
+                              <SpaceBetween direction="horizontal" size="xs">
+                                <Button
+                                  variant="primary"
+                                  loading={busy === 'test'}
+                                  disabled={!keyDraft && !config?.hasKey}
+                                  onClick={handleTest}
+                                >
+                                  {keyDraft ? 'Save & test' : 'Test the stored key'}
+                                </Button>
+                                {config?.hasKey && (
+                                  <Button loading={busy === 'remove'} onClick={handleRemoveKey}>
+                                    Remove key
+                                  </Button>
+                                )}
+                              </SpaceBetween>
+                            </SpaceBetween>
+                          </FormField>
+
+                          {provider.consoleUrl && (
+                            <FormField
+                              label="Option 2 — I don't have a key yet"
+                              description={`Create one in ${provider.label}'s own console, then come back and paste it into option 1. SignBridge deliberately does not create the key for you — it is your account, your key and your billing.`}
+                            >
+                              <SpaceBetween size="xs">
+                                <Link external href={provider.consoleUrl}>
+                                  Open {provider.label} API keys
+                                </Link>
+                                {provider.acquisitionNote && (
+                                  <Box color="text-body-secondary" fontSize="body-s">
+                                    {provider.acquisitionNote}
+                                  </Box>
+                                )}
+                              </SpaceBetween>
+                            </FormField>
+                          )}
+                        </SpaceBetween>
+                      )}
+
+                      {provider.keyless && !usesProfile && (
+                        <SpaceBetween direction="horizontal" size="xs">
+                          <Button variant="primary" loading={busy === 'test'} onClick={handleTest}>
+                            Test connection
+                          </Button>
+                        </SpaceBetween>
+                      )}
+
+                      {/* Models come last because they only exist once the key works. */}
+                      {config?.verifiedOk && provider.inference !== false && (
+                        <SpaceBetween size="m">
+                          <FormField
+                            label="Model"
+                            description={
+                              models.length
+                                ? modelsUnlistable
+                                  ? 'These credentials cannot list models, so the list below is a few current ids rather than everything you can reach. Pick one — or type any model id you have access to and choose Use "…". A cross-region inference profile, a foundation model id and a provisioned-throughput ARN all work.'
+                                  : `${models.length} chat models available${
+                                      config.modelsFetchedAt
+                                        ? `, listed ${new Date(config.modelsFetchedAt).toLocaleString()}`
+                                        : ''
+                                    }. Type to search, or type an id the list does not show yet and choose Use "…".`
+                                : 'No chat models were returned for this key. Type the id of one you have access to and choose Use "…".'
+                            }
+                            secondaryControl={
+                              <Button
+                                iconName="refresh"
+                                loading={busy === 'models'}
+                                onClick={handleRefreshModels}
+                                ariaLabel="Refresh model list"
+                              />
+                            }
+                          >
+                            {/* One control, not a picker plus an "or type one" field
+                                beside it. Typing an id the list does not contain offers
+                                it as `Use "<id>"` at the top of the same dropdown, so
+                                choosing a listed model and reaching an unlisted one are
+                                the same gesture — which matters most for an identity
+                                that cannot list models at all, where the unlisted case
+                                is the normal one. Both go through selectLlmModel, and
+                                the server remembers an unlisted id, so there is no
+                                second code path. The id is deliberately not validated:
+                                an inference profile, a bare model name and a
+                                provisioned-throughput ARN look nothing alike, and a
+                                shape check would reject the model the user came for. */}
+                            <Autosuggest
+                              value={modelFieldValue}
+                              onChange={({ detail }) => setModelQuery(detail.value)}
+                              onSelect={({ detail }) => handleSelectModel(detail.value)}
+                              // Abandoning a half-typed id shows what is actually in use
+                              // again, rather than leaving the field asserting a model
+                              // nothing is configured with.
+                              onBlur={() => setModelQuery(null)}
+                              options={modelOptionGroups}
+                              enteredTextLabel={value => `Use "${value}"`}
+                              placeholder={modelIdPlaceholder}
+                              loadingText="Loading models"
+                              empty="No models to choose from — type the id of one you have access to"
+                              disabled={busy === 'select'}
+                              ariaLabel="Model"
+                            />
+                          </FormField>
+
+                          {/* Adding an id happens by choosing it above, so this exists
+                              only to forget one. Shown only when there is something to
+                              forget, and phrased as ownership rather than as a second
+                              way in. */}
+                          {customModels.length > 0 && (
+                            <FormField
+                              label="Model ids you typed in"
+                              description="Kept in the list above so they survive a reload and a refresh of the provider's list. Dismiss one to forget it."
+                            >
+                              <TokenGroup
+                                items={customModels.map(id => ({ label: id, dismissLabel: `Forget ${id}` }))}
+                                onDismiss={({ detail }) =>
+                                  handleForgetCustomModel(customModels[detail.itemIndex])
+                                }
+                              />
+                            </FormField>
+                          )}
+                        </SpaceBetween>
                       )}
                     </SpaceBetween>
-                  )}
-                </SpaceBetween>
-              </Container>
-            )}
+                  </Container>
+                )}
+              </SpaceBetween>
+            </ExpandableSection>
 
             {/* How the agent behaves, as opposed to which model answers. These
                 lived in config.properties, which meant changing one was a file
                 edit and a server restart; they are settings now, read per turn. */}
-            <Container
-              header={
-                <Header
-                  variant="h3"
-                  description="How the agent runs a turn. Saved here and applied to your next message — nothing to restart."
-                >
-                  Agent behaviour
-                </Header>
-              }
+            <ExpandableSection
+              variant="container"
+              expanded={behaviourOpen}
+              onChange={({ detail }) => setBehaviourOpen(detail.expanded)}
+              headerText="Agent behaviour"
+              headerDescription="How the agent runs a turn. Saved here and applied to your next message — nothing to restart."
             >
               <SpaceBetween size="m">
                 <FormField
@@ -941,7 +966,7 @@ function LlmSettingsPanel() {
                   Save behaviour
                 </Button>
               </SpaceBetween>
-            </Container>
+            </ExpandableSection>
           </SpaceBetween>
         )}
       </SpaceBetween>

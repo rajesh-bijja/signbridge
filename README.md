@@ -48,7 +48,6 @@ Then: pick a profile → paste an endpoint → **Presign** or **Invoke**.
 
 > Prefer a helper script? `./launchSignBridge start` builds the image and wires the
 > mounts for you; `stop` / `delete` manage its lifecycle.
-> Running without Docker? See [Running locally](#running-locally-without-docker).
 
 ## 🧩 Use it from your IDE — MCP, two ways
 
@@ -60,16 +59,7 @@ Both are thin clients of the SignBridge API, so **the app must be running**.
 the model*. Configure SignBridge in Codex or Cursor and every tool works with
 nothing set up in Settings.
 
-### a) Streamable HTTP — nothing extra to run
-
-The server mounts MCP in-process, so it is already live on port 2443. Point an
-HTTP-capable client at:
-
-```
-https://localhost:2443/signbridge/mcp
-```
-
-### b) stdio — Claude Desktop / Cursor / Codex
+### a) stdio — Claude Desktop / Cursor / Codex
 
 ```json
 {
@@ -82,29 +72,37 @@ https://localhost:2443/signbridge/mcp
 }
 ```
 
-Nothing to install or build — `npx` fetches the package and caches it. Both
-environment variables default to a local install, so add them only if you moved
-something:
+That is the whole config — `npx` fetches the package and caches it, and it defaults
+to the local SignBridge and its local user. Straight from GitHub instead of npm, no
+clone, swap the args for:
 
 ```json
-"env": {
-  "SIGNBRIDGE_API_BASE": "https://localhost:2443/signbridge",
-  "SIGNBRIDGE_USER": "signbridgeuser"
-}
-```
-
-Straight from GitHub instead, no npm publish and no clone:
-
-```json
-{ "command": "npx", "args": ["-y", "github:rajesh-bijja/signbridge#main::path:mcp"] }
+"args": ["-y", "github:rajesh-bijja/signbridge#main::path:mcp"]
 ```
 
 Mind the `::path:` separator — `#main:mcp` looks plausible and is a *different*
 spec: npm reads it as the repository root, which has no `signbridge-mcp` bin, and
 the client only reports that it could not determine an executable.
 
-See [MCP reference](#mcp-reference) for the tool list, a local-clone setup, and
-what is deliberately *not* a tool.
+### b) Streamable HTTP — already running on port 2443
+
+The server mounts MCP in-process, so there is no second thing to start:
+
+```json
+{
+  "mcpServers": {
+    "signbridge": {
+      "url": "https://localhost:2443/signbridge/mcp"
+    }
+  }
+}
+```
+
+Some clients name that key `serverUrl` or want `"type": "http"` alongside it — check
+yours. Either way the URL is the only value you supply.
+
+See [MCP reference](#mcp-reference) for the tool list, the optional environment
+overrides, and what is deliberately *not* a tool.
 
 ## 📸 The tour
 
@@ -549,23 +547,18 @@ tmpfs, and memory/CPU/PID limits; a syntax check additionally gets `--network no
 Credentials are passed **by environment-variable name only**, so no secret appears
 in a command line or a log. Container and workspace are destroyed when the run ends.
 
-**Setup: none, if you started with Docker.** `docker compose up` builds the
-execution image as a one-shot `sandbox-image` service that the app waits on; the
-image's entrypoint prints its toolchain versions and exits, so a broken image shows
-up at `up` time rather than on your first Run. The first build fetches four
-toolchains, so budget several minutes and a few GB once. To build it by hand — for a
-local `npm start`, or to pin the Java SDK version:
+**Setup: none.** `docker compose up` builds the execution image as a one-shot
+`sandbox-image` service that the app waits on; the image's entrypoint prints its
+toolchain versions and exits, so a broken image shows up at `up` time rather than on
+your first Run. The first build fetches four toolchains, so budget several minutes
+and a few GB once. To rebuild it on its own — say, to pin the Java SDK version:
+`npm run build:sandbox` (add `-- --verify` to print what's inside).
 
-```bash
-npm run build:sandbox               # builds signbridge-sandbox:latest
-npm run build:sandbox -- --verify   # …then print what's inside
-```
-
-> ⚠️ Sandbox needs a Docker daemon to start those sibling containers. Running
-> SignBridge in Docker, `docker-compose.yml` bind-mounts `/var/run/docker.sock` and
-> sets `SANDBOX_HOST_BASE_DIR` for you. **Mounting that socket is a privileged
-> grant** — equivalent to root on the host — and Sandbox is the only feature that
-> needs it. To run without it, delete the `docker.sock` volume line (or start with
+> ⚠️ Sandbox needs a Docker daemon to start those sibling containers, so
+> `docker-compose.yml` bind-mounts `/var/run/docker.sock` and sets
+> `SANDBOX_HOST_BASE_DIR` for you. **Mounting that socket is a privileged grant** —
+> equivalent to root on the host — and Sandbox is the only feature that needs it. To
+> run without it, delete the `docker.sock` volume line (or start with
 > `SIGNBRIDGE_SANDBOX=0 ./launchSignBridge -o start`). Everything else keeps
 > working; the Sandbox page reports Docker as unavailable.
 
@@ -666,23 +659,17 @@ server exposing all 58 dashboard tools, and Cursor's agent consumes MCP. Pick Cu
 as your provider and a chat turn runs the **Cursor agent CLI on this machine**,
 handed SignBridge's own tools, driving the same API the dashboard uses.
 
-It needs two things besides your key — and the Docker image ships both, so
-`docker compose up --build` is enough. For a local `npm start`, install them once:
-
-```bash
-curl https://cursor.com/install -fsS | bash   # the CLI, on the machine running SignBridge
-cd mcp && npm install                          # SignBridge's MCP dependencies, once
-```
-
-**Test connection** reports each of them separately from the key, so you are told
-which piece is missing rather than getting one ambiguous failure.
+It needs two things besides your key — the Cursor CLI and SignBridge's MCP
+dependencies — and **the Docker image ships both**, so `docker compose up --build` is
+all it takes. **Test connection** reports each of them separately from the key, so
+you are told which piece is missing rather than getting one ambiguous failure.
 
 Three things to know before choosing it:
 
 - **The CLI must be on the SignBridge server** — the process that spawns it. The
   image installs it during the build; build with `--build-arg INSTALL_CURSOR_CLI=0`
-  (or run `npm start` on a machine without it) and this provider reports itself
-  unavailable while every other provider keeps working.
+  and this provider reports itself unavailable while every other provider keeps
+  working.
 - **The headless agent runs with tool approval forced** (`--force`) — a background
   process has no terminal to answer an approval prompt. That switch also grants it
   shell and file access **in its working directory**, which is why that directory is
@@ -728,22 +715,9 @@ switching model switches the rule with it.
 Setup is in [Use it from your IDE](#-use-it-from-your-ide--mcp-two-ways). This is
 everything else.
 
-**From a local clone**, if you'd rather run the file directly:
-
-```bash
-cd mcp && npm install
-```
-
-```json
-{
-  "mcpServers": {
-    "signbridge": {
-      "command": "node",
-      "args": ["/path/to/signbridge/mcp/server.js"]
-    }
-  }
-}
-```
+**Optional environment overrides for the stdio server.** Both default to the local
+install, so a normal setup sets neither — add them to the client's `env` block only
+if you moved something:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
@@ -866,15 +840,10 @@ carries a secret access key, session token, bearer token or provider API key.
 
 `level=debug` prints the full signing trace per request (canonical request, headers,
 string-to-sign, resolved profile, AWS/SSO response bodies) — the only practical way
-to debug a SigV4 mismatch, and hundreds of lines per request:
-
-```bash
-LOG_LEVEL=debug npm start          # local
-```
-
-In Docker, set `level=debug` in `config.properties` (bind-mounted, so it survives
-rebuilds) or add `LOG_LEVEL: debug` to the `environment:` block in
-`docker-compose.yml`.
+to debug a SigV4 mismatch, and hundreds of lines per request. Set `level=debug` under
+`[logging]` in `config.properties` (bind-mounted, so it survives rebuilds) or add
+`LOG_LEVEL: debug` to the `environment:` block in `docker-compose.yml`, then
+`docker compose restart signbridge`.
 
 <details>
 <summary><b>Environment variables</b></summary>
@@ -943,31 +912,12 @@ defaultEmail=signbridgeuser@localhost
 Your browser will warn about it; that is expected for local use. To regenerate,
 delete the pair and restart, or run `./scripts/generate-certs.sh`.
 
-## Running locally without Docker
-
-```bash
-npm install
-cd frontend && npm install && npm run build && cd ..   # build the UI (required)
-npm start                                              # node server.js on :2443
-```
-
-`server.js` refuses to start if `frontend/dist` is missing, so build the UI first.
-The server binds **127.0.0.1** by default — there is no login, and anything that can
-reach the port can sign with your AWS credentials.
-
-Frontend development, with a proxy onto the running backend:
-
-```bash
-cd frontend && npm run dev
-```
-
-Sandbox mode also needs the execution image locally: `npm run build:sandbox`.
-
 ## Architecture
 
-One `node server.js` process (or one container) serves everything on HTTPS port
-2443: the React UI, the REST API, the Socket.IO channel, **and** the MCP HTTP
-endpoint. The **SignBridge** engine in `lib/` does the actual SigV4 signing; the AI
+Docker is the supported way to run SignBridge — one container serves everything on
+HTTPS port 2443: the React UI, the REST API, the Socket.IO channel, **and** the MCP
+HTTP endpoint. (Working on SignBridge itself, from a checkout? That setup is in
+[CONTRIBUTING.md](CONTRIBUTING.md).) The **SignBridge** engine in `lib/` does the actual SigV4 signing; the AI
 chat agent and both MCP transports are alternative front-doors onto the *same* set
 of actions.
 
