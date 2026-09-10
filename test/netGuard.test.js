@@ -206,9 +206,78 @@ test('server.js binds the resolved host rather than every interface', function (
         + ' 0.0.0.0, publishing an unauthenticated credential proxy to the network'
         + ' with nothing to indicate it.');
     assert.match(source, /netGuard\.resolveBindHost\(\s*props\s*,\s*process\.env\s*\)/);
-    // And it must say so out loud when the address is not loopback.
-    assert.match(source, /netGuard\.isLoopbackAddress\(\s*bindHost\s*\)/,
-        'a non-loopback bind must be logged as a warning, since nothing else reveals it');
+    // And it must say something out loud when the address is not loopback, since
+    // nothing else reveals it. The wording lives in netGuard so it can be tested;
+    // server.js must pass the real port and the real container answer, because
+    // those are the two inputs that decide which of the two messages is true.
+    assert.match(source, /netGuard\.describeBindExposure\(\s*bindHost/,
+        'a non-loopback bind must be reported, since nothing else reveals it');
+    assert.match(source, /container:\s*netGuard\.isContainer\(\)/,
+        'the container answer must be passed in — a container bound to 0.0.0.0 is'
+        + ' expected, a laptop process bound to 0.0.0.0 is not, and one message'
+        + ' cannot be right for both');
+    assert.match(source, /log\[\s*exposure\.level\s*\]\(\s*exposure\.message\s*\)/,
+        'and it must be logged at the level netGuard chose');
+});
+
+test('the bind message fits the environment it fires in', function () {
+    // This message used to be a single WARN telling the reader to set
+    // bindHost=127.0.0.1 — advice that would have made the container unreachable
+    // through its own published port, printed on every single normal startup. A
+    // warning that fires on the supported configuration and recommends a fix that
+    // breaks it is worse than no warning at all.
+    assert.strictEqual(netGuard.describeBindExposure('127.0.0.1', { port: 2443 }), null,
+        'loopback is the default and needs no commentary');
+    assert.strictEqual(netGuard.describeBindExposure('::1', { container: true }), null);
+
+    const inContainer = netGuard.describeBindExposure('0.0.0.0', { port: 2443, container: true });
+    assert.strictEqual(inContainer.level, 'info',
+        'in a container 0.0.0.0 is mandatory, so it is not a warning');
+    assert.match(inContainer.message, /expected/);
+    assert.match(inContainer.message, /127\.0\.0\.1:2443:2443/,
+        'it must name the host-side port publish, which is what actually limits access there');
+    assert.doesNotMatch(inContainer.message, /set \[server\] bindHost=127\.0\.0\.1/,
+        'and must not give the advice that breaks the container');
+
+    const onHost = netGuard.describeBindExposure('0.0.0.0', { port: 2443 });
+    assert.strictEqual(onHost.level, 'warn');
+    assert.match(onHost.message, /every network interface/,
+        'the confusing part is what 0.0.0.0 means, so say it');
+    assert.match(onHost.message, /other machine/,
+        '"every host" reads as "every process on my laptop" — name the real risk');
+    assert.match(onHost.message, /bindHost=127\.0\.0\.1/, 'here the advice is correct');
+
+    // A specific LAN address is also not loopback, and "every interface" would be
+    // a lie about it.
+    const pinned = netGuard.describeBindExposure('192.168.1.50', { port: 2443 });
+    assert.strictEqual(pinned.level, 'warn');
+    assert.match(pinned.message, /not a loopback address/);
+    assert.doesNotMatch(pinned.message, /every network interface/);
+});
+
+test('isContainer probes both markers and never throws', function () {
+    // Injected fs: the point is that a missing /proc (macOS, where SignBridge is
+    // developed) must read as "not a container" rather than crash startup.
+    const throwing = {
+        existsSync: function () { throw new Error('nope'); },
+        readFileSync: function () { throw new Error('nope'); }
+    };
+    assert.strictEqual(netGuard.isContainer(throwing), false);
+
+    assert.strictEqual(netGuard.isContainer({
+        existsSync: function (p) { return p === '/.dockerenv'; },
+        readFileSync: function () { throw new Error('unused'); }
+    }), true, '/.dockerenv is the cheap answer');
+
+    assert.strictEqual(netGuard.isContainer({
+        existsSync: function () { return false; },
+        readFileSync: function () { return '0::/kubepods/besteffort/pod123/abc\n'; }
+    }), true, 'and cgroup is the fallback for runtimes that omit /.dockerenv');
+
+    assert.strictEqual(netGuard.isContainer({
+        existsSync: function () { return false; },
+        readFileSync: function () { return '0::/user.slice/user-501.slice\n'; }
+    }), false);
 });
 
 test('server.js checks the Host header before any handler runs', function () {

@@ -386,15 +386,16 @@ try {
             log.info(appConfig.getDisplayName() + ' is listening on https://localhost:' + port +
                 dashboardPath + ' (' + app.settings.env + ' mode, log level ' +
                 require('./lib/logger').getLevel() + ', bound to ' + bindHost + ')');
-            // Loud on purpose. There is no login: a non-loopback bind means anyone
-            // who can reach this port can presign and invoke with every AWS profile
-            // on this machine. Inside the container that is correct and expected
-            // (compose publishes the port to 127.0.0.1 on the host); anywhere else
-            // it should be a deliberate choice.
-            if (!netGuard.isLoopbackAddress(bindHost)) {
-                log.warn('bound to ' + bindHost + ' — SignBridge has no authentication, so every '
-                    + 'host that can reach port ' + port + ' can use your AWS credentials. '
-                    + 'Publish it only to 127.0.0.1, or set [server] bindHost=127.0.0.1.');
+            // There is no login, so a non-loopback bind is worth a line — but what
+            // the line should say depends on whether we are in a container, where
+            // 0.0.0.0 is mandatory and the host-side port publish is what limits
+            // access. netGuard owns that wording; see describeBindExposure.
+            let exposure = netGuard.describeBindExposure(bindHost, {
+                port: port,
+                container: netGuard.isContainer()
+            });
+            if (exposure) {
+                log[exposure.level](exposure.message);
             }
         });
     }

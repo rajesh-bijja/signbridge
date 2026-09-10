@@ -360,15 +360,20 @@ setting where the form lies.
 SignBridge has no login and can sign with every AWS profile on the machine, so
 **the address it binds is the whole of its access control**:
 
-- `bindHost` defaults to **`127.0.0.1`** — reachable from this machine only. Set
-  it to `0.0.0.0` outside a container and you have published an unauthenticated
-  API that spends your AWS credentials to anyone who can reach the port. The
-  server logs a warning when it does.
-- In Docker, `BIND_HOST=0.0.0.0` is set for you — a container process has to bind
-  its own interfaces to be reachable through a published port at all. Compose then
-  publishes that port **to `127.0.0.1` on the host**, so the container isn't on the
-  network either. Change `BIND_ADDRESS` in `docker-compose.yml` if you genuinely
-  want it exposed.
+- `bindHost` defaults to **`127.0.0.1`** — reachable from this machine only.
+  `0.0.0.0` means *every network interface on the machine* — Wi-Fi, Ethernet, VPN,
+  Docker bridge — so setting it outside a container publishes an unauthenticated
+  API that spends your AWS credentials to any **other** machine that can route to
+  the port: anyone on the same office or café Wi-Fi. The server logs a warning
+  saying so at startup.
+- In Docker, `BIND_HOST=0.0.0.0` is set for you and that is correct — a container
+  process has to bind its *own* interfaces to be reachable through a published
+  port at all, so this is not the same thing as the case above. What limits access
+  there is the **host-side publish**, which compose pins to **`127.0.0.1:2443`**;
+  the container isn't on the network either. Startup logs this as INFO, not a
+  warning. Change `BIND_ADDRESS` in `docker-compose.yml` (or publish as
+  `-p 2443:2443`, which drops the host restriction) only if you genuinely want it
+  exposed.
 - `allowedHosts` is the DNS-rebinding guard: loopback names are always accepted,
   any other `Host` header is refused with `421`. Add a name only if you actually
   serve SignBridge under it (`allowedHosts=signbridge.internal,192.168.1.50:2443`).
