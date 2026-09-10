@@ -69,17 +69,19 @@ services:
       # (see [server] bindHost). The Host header is still checked either way, so a
       # remote page cannot resolve its own name here and drive the API.
       BIND_HOST: 0.0.0.0
-      # Deliberately NO api-key variable here. Provider keys are entered in
-      # Settings -> AI features, verified there, and stored encrypted under
-      # ~/.signbridge — there is no .env file in a SignBridge install and nothing
-      # asks you to put a secret in one. Every variable below is a non-secret
-      # operator knob, and all of them are safe to leave unset (`:-` makes them
-      # empty strings, and empty reads the same as absent).
+      # Deliberately NO AI variables here at all — not a key, and not an on/off
+      # switch. The whole LLM configuration (enabled, provider, credential, model,
+      # reasoning effort, temperature, tool-iteration cap) is set in the app at
+      # Settings -> AI features and stored per user under ~/.signbridge, keys
+      # encrypted. That is the only source: a turn resolves it when it runs, so a
+      # change applies to the next message with no restart and nothing here can
+      # gate or override it. There is no .env file in a SignBridge install, and
+      # nothing asks you to put a secret in one.
       #
-      # LLM_ENABLED is the operator master switch: the only way to turn AI
-      # features off for a deployment such that a user pasting a key in Settings
-      # cannot turn them back on. Set LLM_ENABLED=false to ship with no AI.
-      LLM_ENABLED: ${LLM_ENABLED:-}
+      # Every variable below is a non-secret operator knob about the container
+      # itself, and all are safe to leave unset (`:-` makes them empty strings,
+      # and empty reads the same as absent).
+      #
       # Sandbox mode starts sibling containers, and `docker run -v <src>` is
       # resolved by the daemon on the HOST — so the per-run workspace has to be
       # named by its host path, not the /var/www/.signbridge path it has in here.

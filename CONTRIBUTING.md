@@ -81,6 +81,15 @@ Nothing is written inside the repo: all runtime state lives under
   to a provider by the app, and it leaks into process listings, shell history and
   orchestrator templates. With nothing configured, the UI says so and links to
   Settings; don't add a path that quietly supplies a key instead.
+- **Settings is authoritative for the whole LLM configuration, and nothing may
+  need a restart.** Not just the key: the on/off switch, the provider, the model
+  and the agent's knobs (`reasoningEffort`, `temperature`, `maxToolIterations`) are
+  all stored per user and read by `llmSettings.resolveActive()` when a turn runs.
+  There is no `[llm]` section in `config.properties` and no `LLM_*` environment
+  variable — don't add one, even for a value that isn't secret. The last one that
+  existed (`enabled`) made the toggle in the UI decorative while a file decided,
+  and nothing failed to say so. `test/llmConfig.test.js` and
+  `test/secretHygiene.test.js` assert the absence.
 - **Never log or persist AWS secret keys, session tokens or bearer tokens.**
   `lib/redact.js` is the one place that decides what must not reach a log line —
   wrap the payload (`redact.forLog`) rather than trimming the log.

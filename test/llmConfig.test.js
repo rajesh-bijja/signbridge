@@ -7,10 +7,12 @@
 // per provider, and each of these is a place where being subtly wrong produces a
 // bad experience rather than a crash:
 //
-//   * `resolveActive` decides which provider/model/key a chat turn uses, and the
-//     user's sealed settings are its only source. There is no environment key, so
-//     the tests below also assert the absence: a restored fallback would work
-//     silently, chatting with a key the user never entered in the app.
+//   * `resolveActive` decides whether a chat turn runs at all and which
+//     provider/model/key it uses, and the user's stored settings are its only
+//     source — no config key, no environment variable, nothing needing a restart.
+//     So the tests below also assert absences: a restored environment key would
+//     work silently, chatting with a key the user never entered in the app, and a
+//     restored config gate would make the Settings toggle decorative again.
 //   * `describeHttpError` turns a provider's HTTP status into the sentence the
 //     user acts on. The 400-that-means-401 case is real (Google) and verified;
 //     without it, a bad key reads as "something about your request was wrong".
@@ -135,10 +137,124 @@ test('the LLM_API_KEY fallback is gone from the source, not just unreachable', (
             rel + ' must not read an LLM key/model/base URL from the environment'
         );
     }
-    // LLM_ENABLED is a different thing and stays: it is the operator master switch,
-    // it is not a secret, and it can only turn AI features *off*.
+});
+
+test('nothing outside Settings can gate or configure the LLM', () => {
+    // The rule: Settings is the only source for the whole LLM configuration — the
+    // on/off switch included — and a change there applies to the next message with
+    // no restart. LLM_ENABLED used to be an exception, framed as an operator master
+    // switch. It was worse than the framing suggested: `settings.enabled` was
+    // written by llmService and rendered by the panel but never read by
+    // resolveActive, so the *toggle in the UI was decorative* and the value that
+    // actually decided lived in a file that needed a restart to change.
+    //
+    // Asserted on the source because the failure mode is silent in the direction
+    // that matters: re-adding a config read would work fine on the machine that
+    // added it, and only a user who flips the toggle and sees nothing happen would
+    // ever notice. Comments are stripped first — these modules explain the rule in
+    // prose, and a naive scan matches the explanation.
+    let fs = require('fs');
+    let path = require('path');
+    for (let rel of ['lib/chat/llmClient.js', 'lib/chat/agent.js', 'lib/llm/llmSettings.js']) {
+        let code = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8')
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+        assert.ok(!/LLM_ENABLED/.test(code),
+            rel + ' must not read an enable switch from the environment — the toggle is in Settings');
+        assert.ok(!/props\.get\(\s*['"]llm\./.test(code),
+            rel + ' must not read any llm.* key from config.properties');
+        assert.ok(!/properties-reader/.test(code),
+            rel + ' must not load config.properties at all: anything read there needs a restart to change');
+    }
+});
+
+test('resolveActive owns the enable switch, so the Settings toggle actually decides', () => {
+    // The toggle's whole job. Turning AI features off has to stop a turn here,
+    // where every other reason a turn cannot run is decided, and it has to do so
+    // from the stored settings so it takes effect on the next message.
+    let off = llmSettings.resolveActive(Object.assign(settingsWith('openai'), { enabled: false }));
+    assert.equal(off.ok, false, 'a disabled install must not chat, however well configured');
+    assert.equal(off.reason, 'disabled');
+    assert.match(off.message, /Settings/, 'the message is the whole content of the 503 the user sees');
+    // The provider still travels, so the UI can say which one is switched off.
+    assert.equal(off.providerId, 'openai');
+
+    // Explicitly on, and absent-means-on: an install that predates the field must
+    // not silently lose chat on upgrade.
+    assert.equal(llmSettings.resolveActive(settingsWith('openai')).ok, true);
+    let legacy = settingsWith('openai');
+    delete legacy.enabled;
+    assert.equal(llmSettings.resolveActive(legacy).ok, true, 'a missing enabled flag reads as on');
+
+    // A fresh install is on too, so it reports the actionable 'not_configured'
+    // rather than 'disabled' — "turn this on" is the wrong instruction when the
+    // real next step is picking a provider.
+    assert.equal(llmSettings.emptySettings().enabled, true);
+    assert.equal(llmSettings.resolveActive(llmSettings.emptySettings()).reason, 'not_configured');
+});
+
+test('the agent behaviour knobs are settings, clamped rather than rejected', () => {
+    // reasoningEffort / temperature / maxToolIterations used to be read from
+    // config.properties at module load. They are per-user settings now, so they
+    // arrive on the resolution and change without a restart.
+    //
+    // Clamped, not validated: these come from free-text inputs, and a save that
+    // fails with no named field is worse than one that quietly lands in range.
+    assert.equal(llmSettings.sanitizeTemperature('0.7'), 0.7);
+    assert.equal(llmSettings.sanitizeTemperature(99), llmSettings.MAX_TEMPERATURE);
+    assert.equal(llmSettings.sanitizeTemperature(-1), 0);
+    assert.equal(llmSettings.sanitizeTemperature('not a number'), 0);
+    assert.equal(llmSettings.sanitizeTemperature(''), 0);
+
+    assert.equal(llmSettings.sanitizeMaxToolIterations('12'), 12);
+    assert.equal(llmSettings.sanitizeMaxToolIterations(0), llmSettings.DEFAULT_MAX_TOOL_ITERATIONS,
+        'zero iterations is a chat that can never call a tool — treat it as unset');
+    assert.equal(llmSettings.sanitizeMaxToolIterations(9999), llmSettings.MAX_TOOL_ITERATIONS_CEILING,
+        'the ceiling is what stops one turn spending the user\'s whole quota');
+    assert.equal(llmSettings.sanitizeMaxToolIterations('abc'), llmSettings.DEFAULT_MAX_TOOL_ITERATIONS);
+
+    // A closed list here, unlike model or region: these are the values the API
+    // accepts, so an unrecognised one is a 400 rather than a new capability.
+    for (let effort of llmSettings.REASONING_EFFORTS) {
+        assert.equal(llmSettings.sanitizeReasoningEffort(' ' + effort.toUpperCase() + ' '), effort);
+    }
+    assert.equal(llmSettings.sanitizeReasoningEffort('turbo'), '',
+        'an unknown effort falls back to the provider default rather than being sent');
+    assert.equal(llmSettings.sanitizeReasoningEffort(undefined), '');
+
+    // They travel on the resolution, because that is the only thing llmClient and
+    // agent read.
+    let active = llmSettings.resolveActive(Object.assign(settingsWith('openai'), {
+        reasoningEffort: 'high', temperature: '1.5', maxToolIterations: '3'
+    }));
+    assert.equal(active.reasoningEffort, 'high');
+    assert.equal(active.temperature, 1.5);
+    assert.equal(active.maxToolIterations, 3);
+
+    // And on toPublic, because the Settings panel renders them.
+    let pub = llmSettings.toPublic(Object.assign(settingsWith('openai'), { temperature: 42 }));
+    assert.equal(pub.temperature, llmSettings.MAX_TEMPERATURE);
+    assert.equal(pub.maxToolIterations, llmSettings.DEFAULT_MAX_TOOL_ITERATIONS);
+});
+
+test('the resolved knobs are what llmClient and agent actually use', () => {
+    // Source-level, because the alternative is a live provider call. Each of these
+    // was a module-level config read, and the bug they would reintroduce is the
+    // same one every time: the user changes a value in Settings, the save succeeds,
+    // and the turn keeps using the file's value.
+    let fs = require('fs');
+    let path = require('path');
     let clientSrc = fs.readFileSync(path.join(__dirname, '..', 'lib/chat/llmClient.js'), 'utf8');
-    assert.ok(/LLM_ENABLED/.test(clientSrc), 'the operator master switch must stay');
+    assert.match(clientSrc, /active\.reasoningEffort/,
+        'buildParams must read the reasoning effort off the resolution');
+    assert.match(clientSrc, /active\.temperature/,
+        'buildParams must read the temperature off the resolution');
+    assert.match(clientSrc, /maxToolIterations:\s*active\.maxToolIterations/,
+        'the session must carry the iteration cap to the agent');
+
+    let agentSrc = fs.readFileSync(path.join(__dirname, '..', 'lib/chat/agent.js'), 'utf8');
+    assert.match(agentSrc, /session\.maxToolIterations/,
+        'the agent must take its cap from the session, not from a config file');
 });
 
 test('resolveActive: each way of being unconfigured has its own actionable reason', () => {

@@ -133,37 +133,25 @@ authLabel.irsa=AWS IRSA (EKS Service Account)
 authLabel.restBasic=Basic Auth
 authLabel.restBearer=Bearer Token
 authLabel.generic=Generic REST (no signing)
-[llm]
-# AI chat is enabled by default — it's a core feature of SignBridge.
+# AI features (chat) are NOT configured in this file. There is deliberately no
+# [llm] section: the on/off switch, the provider, the credential, the model and
+# the agent's behavioural knobs (reasoning effort, temperature, tool-iteration
+# cap) all live in the app, at Settings -> AI features, stored per user under
+# ~/.signbridge with keys encrypted (AES-256-GCM).
 #
-# The provider, the API key and the model are NOT configured here. Connect a
-# provider in the UI: Settings -> AI features. SignBridge supports OpenAI,
-# Anthropic, AWS Bedrock (Claude), OpenRouter, Google Gemini, Cursor, Groq,
-# Mistral, DeepSeek, xAI, Azure OpenAI and a local Ollama; keys are encrypted at
-# rest under ~/.signbridge and the model is picked from the list the provider says
-# your key can use. Bedrock needs no key at all — it can sign with any AWS profile
-# you already have here (see the note about the Cursor provider below).
+# That is the only source, and it is a deliberate design rule rather than an
+# omission: a turn resolves those settings when it runs, so changing one applies
+# to your next message with no restart — and nothing in this file, in
+# docker-compose.yml or in the environment can gate or override what you chose in
+# the UI. A setting split between a file and a form is a setting where the form
+# lies. No environment variable can supply a provider key either; a key in a file
+# or a variable cannot be verified, masked or rotated by the app, and it leaks
+# into process listings, shell history and orchestrator templates.
 #
-# enabled=false is the operator's master switch: it hides/disables chat
-# regardless of what any user has connected.
-enabled=true
-# Reasoning effort for reasoning models (o-series / GPT-5.x, Claude thinking
-# variants): minimal|low|medium|high. Ignored by non-reasoning models.
-# Blank = provider default.
-reasoningEffort=
-# Sampling temperature for non-reasoning models (ignored by reasoning models).
-temperature=0
-# Safety cap on the agent's tool-call loop (model->tool->model iterations per turn).
-maxToolIterations=8
-# NOTE: No API key is ever stored in this file, there is no .env file to put one
-# in, and no environment variable can supply one either. A provider key is
-# entered in Settings -> AI features, verified there, and stored encrypted
-# (AES-256-GCM) under ~/.signbridge. That is the only path, deliberately: a key
-# in a file or an environment variable cannot be verified, masked or rotated by
-# the app, and it leaks into process listings, shell history and orchestrator
-# templates. With no provider configured, AI features report that and link to
-# Settings rather than falling back to a key nobody chose in the app.
-# `enabled` above is the operator switch and can only turn AI features off.
+# SignBridge supports OpenAI, Anthropic, AWS Bedrock (Claude), OpenRouter, Google
+# Gemini, Cursor, Groq, Mistral, DeepSeek, xAI, Azure OpenAI and a local Ollama.
+# Bedrock needs no key at all — it can sign with any AWS profile you already have
+# here. With nothing configured, AI features say so and link to Settings.
 
 [cursor]
 # Only used when the active AI provider is Cursor. Cursor sells an agent rather

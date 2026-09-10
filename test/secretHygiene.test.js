@@ -190,10 +190,18 @@ test('config.properties.example ships no slot for a secret', () => {
         assert.ok(!/^\s*(apiKey|api_key|LLM_API_KEY|password|secret|token)\s*=/i.test(line),
             'config.properties.example:' + (i + 1) + ' declares a secret setting: ' + line.trim());
     });
-    // ...and the dead LLM keys stay dead: the provider, key and model are runtime
-    // settings now, so a template that still offered them would be read as the
-    // configuration path and silently ignored.
-    ['provider', 'model', 'baseUrl'].forEach(function (key) {
+    // ...and there is no [llm] section at all any more. Every part of the LLM
+    // configuration — the on/off switch, the provider, the credential, the model
+    // and the agent's behavioural knobs — is chosen in Settings and stored per
+    // user, so a template that still offered any of them would be read as *the*
+    // configuration path and then silently ignored. Worse for the switch
+    // specifically: while `enabled` lived here it was the value that actually
+    // decided, and the toggle in the UI was decorative.
+    assert.ok(!/^\s*\[llm\]/m.test(example),
+        'config.properties.example must not reintroduce an [llm] section — AI features are ' +
+        'configured in Settings, and a setting split between a file and a form is a setting ' +
+        'where the form lies');
+    ['provider', 'model', 'baseUrl', 'enabled', 'reasoningEffort', 'maxToolIterations'].forEach(function (key) {
         assert.ok(!new RegExp('^\\s*' + key + '\\s*=', 'm').test(example),
             'config.properties.example must not reintroduce llm.' + key +
             ' — it is chosen in Settings and stored per user');

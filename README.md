@@ -341,10 +341,19 @@ read as `section.key`, and every section is commented in
 | `[ssl]` | The cert/key file names under `~/.signbridge/keys` |
 | `[auth]` | The single local user's name, display name and email |
 | `[app]` | Route prefix, branding, and the auth-mode display labels |
-| `[llm]` | The behavioural knobs only — `enabled`, `reasoningEffort`, `temperature`, `maxToolIterations`. **No key, no provider, no model:** those are chosen in the app |
 | `[cursor]` | Only for the Cursor AI provider: CLI binary, timeouts, output cap |
 | `[sandbox]` | Execution image, Docker binary, timeouts, memory/CPU/pids caps |
 | `[awscatalog]` | The botocore service-model source used by Templates and Sandbox completions |
+
+**There is deliberately no `[llm]` section.** All of the AI configuration — the
+on/off switch, the provider, the credential, the model, and the agent's
+behavioural knobs (reasoning effort, temperature, tool-iteration cap) — lives in
+the app at **Settings → AI features**, stored per user under `~/.signbridge` with
+keys encrypted. That is the only source: a turn resolves those settings when it
+runs, so changing one applies to your next message with **no restart**, and
+nothing in this file, in `docker-compose.yml` or in the environment can gate or
+override what you chose in the UI. A setting split between a file and a form is a
+setting where the form lies.
 
 ### Network exposure
 
@@ -400,7 +409,6 @@ there is no file for them.
 | --- | --- |
 | `BIND_HOST` | `server.bindHost` |
 | `LOG_LEVEL` | `logging.level` |
-| `LLM_ENABLED` | `llm.enabled` (the operator master switch — it can only turn AI features off) |
 | `USER_NAME` | `auth.defaultUserName` |
 | `CURSOR_CLI_BIN` | `cursor.cliBin` |
 | `SANDBOX_IMAGE`, `SANDBOX_DOCKER_BIN` | `sandbox.image`, `sandbox.dockerBin` |
@@ -408,13 +416,14 @@ there is no file for them.
 | `TIMEOUT` | Outbound HTTP request timeout (ms) |
 | `SSO_CREDENTIAL_REFRESH_BUFFER_MS`, `EC2_CREDENTIAL_REFRESH_BUFFER_MS`, `IRSA_CREDENTIAL_REFRESH_BUFFER_MS` | How much life a cached temporary credential must have left to be reused (default 5 min) |
 
-**No variable here carries a secret, and there is no variable that can supply an AI
-provider key.** A provider key is entered in **Settings → AI features**, where
-SignBridge verifies it and stores it encrypted under `~/.signbridge`. That is the
-only path: a key in an environment variable cannot be verified, masked or rotated
-by the app, and it leaks into process listings, shell history and whatever
-orchestrator template set it. `LLM_ENABLED=false` turns AI features off; nothing
-turns them on without a key you added in the UI.
+**No variable here carries a secret, and none of them configures AI features at
+all** — not a key, and not an on/off switch. Everything about the LLM is set in
+**Settings → AI features** and applies to your next message with no restart; a
+variable that could gate or override it would be a value you cannot change from
+the page that claims to own it. A key in an environment variable also cannot be
+verified, masked or rotated by the app, and it leaks into process listings, shell
+history and whatever orchestrator template set it. With nothing configured, AI
+features say so and link to Settings.
 
 `HTTPS_PORT` and `BIND_ADDRESS` are read by **Compose and `launchSignBridge`**, not
 by the app: they set the host side of the published port. The server always
@@ -632,7 +641,13 @@ variable that can supply one — the key is yours, you add it in the UI at runti
 and no restart is involved. Until you do, the Chat page says so and links straight
 to the page that fixes it, so you never have to guess why a turn failed.
 
-Open **Settings → AI features** and turn on **Enable LLM**:
+The same is true of *every* AI setting, not just the key: the on/off switch, the
+provider, the model and the agent's behavioural knobs are all read from your
+stored settings when a turn runs. Change one and it applies to your next message —
+nothing to edit on disk, nothing to restart, and nothing outside the UI that can
+quietly override what you chose.
+
+Open **Settings → AI features** and turn on **Enable AI features**:
 
 | Step | What happens |
 | --- | --- |
@@ -722,23 +737,26 @@ showing the current provider and model; click it for a searchable list of every
 model on your key. Picking one applies to the current turn *and* writes back to
 Settings, so Chat and Settings can never disagree about which model you are using.
 
-**Turning it off.** `enabled=false` in `config.properties [llm]` (or
-`LLM_ENABLED=false`) is an operator-level master switch: with it off, no key
-pasted in the UI will turn chat back on.
+**Turning it off.** The **Enable AI features** toggle at the top of Settings → AI
+features. It takes effect immediately — chat stops answering on the next message,
+with nothing to restart — and your provider keys and model choice are kept, so
+turning it back on resumes where you left off. There is no config key and no
+environment variable that does this instead: an operator switch in a file would
+mean the toggle in the UI was the thing that lied.
 
-Tuning that isn't per-provider still lives in `config.properties`:
+**Tuning the agent** is in the same place, under *Agent behaviour*, and also
+applies to your next message with no restart:
 
-```properties
-[llm]
-enabled=true         # on by default; false disables all AI features
-reasoningEffort=     # reasoning models (o-series / GPT-5.x): minimal|low|medium|high
-temperature=0        # non-reasoning models only
-maxToolIterations=8  # safety cap on the tool loop per turn
-```
+| Setting | What it does |
+| --- | --- |
+| **Reasoning effort** | `minimal` \| `low` \| `medium` \| `high`, or *Provider default*. Used by reasoning models only |
+| **Temperature** | `0`–`2`. Used by non-reasoning models only |
+| **Max tool iterations** | Safety cap on the tool loop within one turn |
 
 Reasoning models (o-series, GPT-5.x, Claude thinking models, or any id detected as
-a reasoning model) automatically use `reasoningEffort` and drop `temperature`;
-everything else uses `temperature`.
+a reasoning model) automatically use the reasoning effort and drop temperature;
+everything else uses temperature. Which one applies is decided from the model you
+actually have selected, so switching model switches the rule with it.
 
 ## Sandbox mode
 

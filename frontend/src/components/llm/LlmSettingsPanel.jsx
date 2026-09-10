@@ -41,6 +41,18 @@ const REGION_SUGGESTIONS = [
   'ap-northeast-1', 'ap-southeast-1', 'ap-southeast-2', 'ap-south-1', 'ca-central-1'
 ]
 
+// Mirrors llmSettings.REASONING_EFFORTS, with the blank meaning spelled out. A
+// closed list is right here (unlike the region and model fields): these are the
+// four values the OpenAI-shaped `reasoning_effort` parameter accepts, so a typo
+// would be a 400 from the provider rather than a model nobody has heard of.
+const REASONING_EFFORT_OPTIONS = [
+  { value: '', label: 'Provider default' },
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' }
+]
+
 // "Configured" is not the same as "has a key": a provider signing with an AWS
 // profile never has one, and reading its badge as unconfigured forever is worse
 // than no badge at all.
@@ -88,7 +100,11 @@ function modelOption(model) {
 }
 
 /**
- * The "Enable LLM" panel on the Settings page.
+ * The "AI features" panel on the Settings page — and the only place the whole
+ * LLM configuration lives: the Enable AI features switch, the provider, the
+ * credential, the model, and the agent's behaviour knobs. There is no config
+ * file section and no environment variable behind any of it, so nothing here
+ * needs a restart to take effect: the next chat turn reads the stored settings.
  *
  * Saves immediately rather than through the page's Save button, and that is
  * deliberate: testing a key and picking a model are each a round trip to the
@@ -133,6 +149,14 @@ function LlmSettingsPanel() {
   const [regionDraft, setRegionDraft] = useState('')
   const [awsProfiles, setAwsProfiles] = useState([])
   const [profilesError, setProfilesError] = useState(null)
+
+  // The agent's behavioural knobs, held as drafts because two of the three are
+  // free-text: saving on every keystroke would write "1" on the way to "12". They
+  // are settings like everything else here — nothing reads them from a config file
+  // any more, so a change applies to the next turn with no restart.
+  const [effortDraft, setEffortDraft] = useState('')
+  const [temperatureDraft, setTemperatureDraft] = useState('0')
+  const [iterationsDraft, setIterationsDraft] = useState('8')
 
   const applyResponse = useCallback(data => {
     if (data && data.settings) setSettings(data.settings)
@@ -180,6 +204,16 @@ function LlmSettingsPanel() {
       cancelled = true
     }
   }, [])
+
+  // Mirror the stored knobs whenever the server tells us what they are. Keyed on
+  // the values rather than on the settings object, so an unrelated write (a key,
+  // a model choice) does not throw away a value being typed.
+  useEffect(() => {
+    if (!settings) return
+    setEffortDraft(settings.reasoningEffort || '')
+    setTemperatureDraft(String(settings.temperature ?? 0))
+    setIterationsDraft(String(settings.maxToolIterations ?? 8))
+  }, [settings?.reasoningEffort, settings?.temperature, settings?.maxToolIterations])
 
   const provider = useMemo(
     () => providers.find(p => p.id === selectedId) || null,
@@ -268,6 +302,23 @@ function LlmSettingsPanel() {
   const handleToggle = async checked => {
     const data = await call('toggle', () => presignApi.updateLlmSettings({ enabled: checked }))
     if (data) applyResponse(data)
+  }
+
+  // Saved as one group, because the three are read together on every turn and a
+  // per-field save on a free-text number would write each intermediate keystroke.
+  // The server clamps rather than rejecting, and the response is what the fields
+  // then show — so an out-of-range value is corrected visibly instead of silently.
+  const handleSaveBehaviour = async () => {
+    const data = await call('behaviour', () =>
+      presignApi.updateLlmSettings({
+        reasoningEffort: effortDraft,
+        temperature: temperatureDraft,
+        maxToolIterations: iterationsDraft
+      })
+    )
+    if (!data) return
+    applyResponse(data)
+    setNotice('Agent behaviour saved. It applies to your next message — no restart needed.')
   }
 
   const handleTest = async () => {
@@ -442,14 +493,18 @@ function LlmSettingsPanel() {
       }
     >
       <SpaceBetween size="l">
+        {/* The master switch, and the only one. There is no config key and no
+            environment variable behind it, so what this reads is what a chat turn
+            gets — with no restart. */}
         <Toggle checked={enabled} onChange={({ detail }) => handleToggle(detail.checked)}>
-          Enable LLM
+          Enable AI features
         </Toggle>
 
         {!enabled && (
           <Box color="text-body-secondary">
-            Turn this on to configure a provider. Chat and the AI-assisted features stay hidden
-            until a provider is connected.
+            AI features are off. Chat will not answer, and nothing here is configured until you turn
+            this on — it takes effect immediately, with no restart. Your provider keys and model
+            choice are kept, so turning it back on resumes where you left off.
           </Box>
         )}
 
@@ -824,6 +879,69 @@ function LlmSettingsPanel() {
                 </SpaceBetween>
               </Container>
             )}
+
+            {/* How the agent behaves, as opposed to which model answers. These
+                lived in config.properties, which meant changing one was a file
+                edit and a server restart; they are settings now, read per turn. */}
+            <Container
+              header={
+                <Header
+                  variant="h3"
+                  description="How the agent runs a turn. Saved here and applied to your next message — nothing to restart."
+                >
+                  Agent behaviour
+                </Header>
+              }
+            >
+              <SpaceBetween size="m">
+                <FormField
+                  label="Reasoning effort"
+                  description="For reasoning models (o-series, GPT-5.x, Claude thinking variants). Other models ignore it. Provider default leaves the choice to the model."
+                >
+                  <Select
+                    selectedOption={
+                      REASONING_EFFORT_OPTIONS.find(o => o.value === effortDraft) ||
+                      REASONING_EFFORT_OPTIONS[0]
+                    }
+                    onChange={({ detail }) => setEffortDraft(detail.selectedOption.value)}
+                    options={REASONING_EFFORT_OPTIONS}
+                  />
+                </FormField>
+
+                <FormField
+                  label="Temperature"
+                  description="0 to 2, for non-reasoning models (reasoning models reject it). 0 is the most repeatable, which is usually what you want when the answer is a signed request."
+                >
+                  <Input
+                    type="number"
+                    value={temperatureDraft}
+                    onChange={({ detail }) => setTemperatureDraft(detail.value)}
+                    step={0.1}
+                    inputMode="decimal"
+                  />
+                </FormField>
+
+                <FormField
+                  label="Max tool iterations"
+                  description="Safety cap on the model → tool → model loop within one turn (1 to 30). Raise it for tasks that chain several tools; a runaway loop stops here."
+                >
+                  <Input
+                    type="number"
+                    value={iterationsDraft}
+                    onChange={({ detail }) => setIterationsDraft(detail.value)}
+                    inputMode="numeric"
+                  />
+                </FormField>
+
+                <Button
+                  variant="primary"
+                  loading={busy === 'behaviour'}
+                  onClick={handleSaveBehaviour}
+                >
+                  Save behaviour
+                </Button>
+              </SpaceBetween>
+            </Container>
           </SpaceBetween>
         )}
       </SpaceBetween>
