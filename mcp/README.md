@@ -19,6 +19,11 @@ A running SignBridge — see the [main README](../README.md):
 docker compose up --build -d      # or: ./launchSignBridge start
 ```
 
+That is all. **No AI provider API key is needed for any tool here.** The key you
+see in SignBridge's Settings → AI features buys inference for its own Chat page,
+which has no model of its own — over MCP, your client is the model. These tools
+only sign AWS requests and read local state.
+
 ## Configure your client
 
 Nothing to install. Point the client at `npx`:
@@ -94,6 +99,12 @@ JavaScript / TypeScript / Java against a profile's credentials), S3 World (list,
 recursive search, read decoded object contents, upload, copy, delete), profiles,
 EC2 and IRSA discovery, history, favorites, templates and the AWS service
 catalog, settings, LLM model selection, and chat sessions.
+
+There is deliberately no `chat` tool — your client would be paying a second model
+to reach tools it already has. And `summarize_chat_session`, which reads a saved
+Chat-page session, hands you the transcript to summarize yourself when SignBridge
+has no provider configured, rather than failing and pointing at a Settings page
+you may not be able to open.
 
 Two things are deliberately **not** exposed, because a tool result becomes part of
 the model's conversation history and with a hosted client leaves the machine:

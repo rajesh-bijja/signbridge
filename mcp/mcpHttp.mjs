@@ -44,9 +44,13 @@ export function createMcpHttpHandler(opts) {
         : await axios[method](url, payload, config)
       return response.data
     } catch (err) {
+      // statusCode + apiData travel with the error for the same reason they do in
+      // mcp/server.js: a tool may have a better answer for one specific failure.
       const apiMessage = err.response && err.response.data && err.response.data.message
       const wrapped = new Error(apiMessage || err.message)
       wrapped.apiMessage = apiMessage
+      wrapped.statusCode = (err.response && err.response.status) || 0
+      wrapped.apiData = (err.response && err.response.data) || null
       throw wrapped
     }
   }

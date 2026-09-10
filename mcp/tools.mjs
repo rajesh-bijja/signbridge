@@ -12,6 +12,17 @@
 // A tool definition is: { name, description, schema (zod raw shape), handler }.
 // registerTools(server, ctx) wires them all onto an McpServer instance.
 //
+// NO TOOL HERE NEEDS AN AI PROVIDER KEY, and that is a property to preserve.
+// SignBridge's provider key buys *inference* for its own Chat page, which has no
+// model of its own. An MCP client already is a model, so these tools only sign
+// AWS requests and read local state — the key is irrelevant to all of them. Two
+// consequences: /chat is permanently excluded (a model paying a second model to
+// reach tools it already has), and summarize_chat_session — the one tool that
+// wanted a completion — falls back to handing the transcript to the caller
+// instead of returning a 503 that sends the user to a Settings page they may not
+// even be able to open. Adding a tool that fails without a key would quietly
+// make "configure SignBridge in Codex and everything works" untrue.
+//
 // Parity is checked against server.js's route table, not assumed — and three
 // routes the dashboard uses are deliberately absent, because their whole return
 // value is a credential: /copyBearerToken (the bearer token itself),
@@ -203,6 +214,16 @@ function ok(data) {
 function fail(err) {
   const message = err && (err.apiMessage || err.message) ? (err.apiMessage || err.message) : String(err)
   return { isError: true, content: [{ type: 'text', text: 'Error: ' + message }] }
+}
+
+// Did this call fail only because SignBridge has no AI provider of its own?
+//
+// Every route answers that case with 503 + needsLlmSetup, so the test is the flag
+// and not the wording. Deliberately narrow: a tool may substitute its own answer
+// for *this* failure, but a 404 or a real error must still surface as an error —
+// silently returning something plausible instead would be worse than the 503.
+function isLlmSetupError(err) {
+  return !!(err && err.apiData && err.apiData.needsLlmSetup)
 }
 
 // Guard against protocol-less / non-URL endpoints (e.g. a history id or filename
@@ -1127,10 +1148,37 @@ export function buildTools(ctx) {
     {
       name: 'summarize_chat_session',
       description:
-        'Generate an AI summary of a saved chat session (what was asked, which profiles/endpoints/tools were used, ' +
-        'and outcomes). Requires the LLM to be enabled. Provide the threadId (from list_chat_sessions).',
+        'Summarize a saved chat session: what was asked, which profiles/endpoints/tools were used, and outcomes. ' +
+        'Provide the threadId (from list_chat_sessions). No API key is needed — if SignBridge has no AI provider ' +
+        'configured it returns the transcript with instructions for you to summarize it yourself.',
       schema: { threadId: z.string().describe('The chat session id to summarize') },
-      handler: async input => ok(await callApi('/chatSummarizeThread', withUser({ threadId: input.threadId })))
+      handler: async input => {
+        try {
+          return ok(await callApi('/chatSummarizeThread', withUser({ threadId: input.threadId })))
+        } catch (err) {
+          if (!isLlmSetupError(err)) throw err
+          // The one tool in this set that needed SignBridge's own AI provider key,
+          // and the only one where that requirement was absurd: whoever is calling
+          // is already a language model. Asking it to make us pay a second model to
+          // paraphrase a transcript it can read itself is a 503 for no benefit — so
+          // hand back the transcript and let the caller do the summarizing.
+          const thread = await callApi('/chatThread', withUser({ threadId: input.threadId }))
+          return ok({
+            threadId: input.threadId,
+            title: thread && thread.title,
+            summary: null,
+            summarizedBy: 'caller',
+            reason:
+              'SignBridge has no AI provider configured, so it did not write the summary itself. ' +
+              'Nothing is wrong and nothing needs configuring — the transcript is below.',
+            instruction:
+              'Summarize the session below in a short paragraph or up to 5 bullet points: what the user asked, ' +
+              'which profiles, endpoints and tools were used, and the outcomes. Use Markdown. ' +
+              'Do not invent details that are not in the transcript.',
+            messages: (thread && thread.messages) || []
+          })
+        }
+      }
     },
     {
       name: 'delete_chat_session',

@@ -118,10 +118,15 @@ async function callApi(pathName, payload, options) {
       : await axios[method](url, payload, config)
     return response.data
   } catch (err) {
-    // Surface the API's error message to the tool caller.
+    // Surface the API's error message to the tool caller — plus the status and the
+    // body, because some tools have a useful answer for a *particular* failure and
+    // cannot tell which one it was from a message string. (summarize_chat_session
+    // reads needsLlmSetup off apiData to fall back to the caller's own model.)
     const apiMessage = err.response && err.response.data && err.response.data.message
     const wrapped = new Error(apiMessage || describeTransportError(err) || err.message)
     wrapped.apiMessage = apiMessage
+    wrapped.statusCode = (err.response && err.response.status) || 0
+    wrapped.apiData = (err.response && err.response.data) || null
     throw wrapped
   }
 }

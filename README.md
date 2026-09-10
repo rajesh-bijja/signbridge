@@ -970,6 +970,21 @@ pick whichever your client supports. Either way, the MCP server is a thin client
 of the SignBridge HTTPS API, so **the main server must be running** for the tools
 to do anything.
 
+### You do not need an AI provider key for any of this
+
+Configure SignBridge in Codex, Cursor or Claude and every tool works with nothing
+set up in Settings → AI features. The provider key you see there buys *inference*
+for SignBridge's own Chat page, which has no model of its own — over MCP, **your
+client is the model**. The tools only sign AWS requests and read local state.
+
+Two consequences worth knowing:
+
+- There is deliberately **no `chat` tool**. Your client would be paying a second
+  model to reach tools it already has.
+- `summarize_chat_session` reads a saved Chat-page session. With no provider
+  configured it hands you the transcript and asks *you* to summarize it, rather
+  than failing and pointing at a Settings page you may not be able to open.
+
 ### Option A — HTTP (single service, nothing extra to run)
 
 The main server mounts an MCP **Streamable HTTP** endpoint in-process, so a plain
