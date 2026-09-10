@@ -397,13 +397,20 @@ there is no file for them.
 | `BIND_HOST` | `server.bindHost` |
 | `LOG_LEVEL` | `logging.level` |
 | `LLM_ENABLED` | `llm.enabled` (the operator master switch) |
-| `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | Last-resort OpenAI fallback, used **only** when no provider is configured in Settings |
+| `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | An OpenAI key for a deploy with no way to reach the Settings page — read **only** when no provider is configured there |
 | `USER_NAME` | `auth.defaultUserName` |
 | `CURSOR_CLI_BIN` | `cursor.cliBin` |
 | `SANDBOX_IMAGE`, `SANDBOX_DOCKER_BIN` | `sandbox.image`, `sandbox.dockerBin` |
 | `SANDBOX_HOST_BASE_DIR` | The host path `~/.signbridge` is mounted from — required only when SignBridge itself runs in a container |
 | `TIMEOUT` | Outbound HTTP request timeout (ms) |
 | `SSO_CREDENTIAL_REFRESH_BUFFER_MS`, `EC2_CREDENTIAL_REFRESH_BUFFER_MS`, `IRSA_CREDENTIAL_REFRESH_BUFFER_MS` | How much life a cached temporary credential must have left to be reused (default 5 min) |
+
+**Nothing here asks you to put a secret in an environment variable.** Provider keys
+belong in **Settings → AI features**, which verifies the key and stores it
+encrypted under `~/.signbridge`; `docker-compose.yml` deliberately passes no
+api-key variable through. `LLM_API_KEY` exists only for a deployment that cannot
+reach that page at all (an unattended Kubernetes, systemd or CI install), it is
+OpenAI-only, and a provider configured in Settings always wins over it.
 
 `HTTPS_PORT` and `BIND_ADDRESS` are read by **Compose and `launchSignBridge`**, not
 by the app: they set the host side of the published port. The server always
@@ -719,23 +726,6 @@ maxToolIterations=8  # safety cap on the tool loop per turn
 Reasoning models (o-series, GPT-5.x, Claude thinking models, or any id detected as
 a reasoning model) automatically use `reasoningEffort` and drop `temperature`;
 everything else uses `temperature`.
-
-<details>
-<summary><b>Upgrading from <code>LLM_API_KEY</code> in the environment</b></summary>
-
-Nothing breaks. If no provider is configured in Settings, SignBridge still falls
-back to `LLM_API_KEY` (with optional `LLM_MODEL` / `LLM_BASE_URL`) against OpenAI,
-so an existing install and an unattended deploy that can only set environment
-variables (Kubernetes, systemd, CI) keep working untouched. That is the only reason
-`docker-compose.yml` still passes `LLM_API_KEY` through; a fresh install needs no
-environment variable at all, and an unset one reads the same as an absent one.
-
-Once you configure a provider in Settings, **that wins** — the environment
-variable is a fallback, not an override. Moving your key into Settings is
-recommended: it gets encrypted, it stops living in a file you edit by hand, and it
-unlocks the model picker.
-
-</details>
 
 ## Sandbox mode
 
