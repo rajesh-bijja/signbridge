@@ -143,6 +143,8 @@ one straight to the request form.*
 
 ### S3 World — see *inside* the object, not just its name
 
+![SignBridge S3 World: a bucket folder listing with a recursive search box, and a CSV object open in a viewer showing its rows as a table](assets/screenshots/s3world.png)
+
 Open `/signbridge/s3world` and "what's in this file?" is a click, not a download:
 parquet as a table, `.xlsx` as sheets, a `.log.gz` as text, a tarball as a member
 list, a notebook as cells, JSON/XML/YAML as a navigable tree. Search is recursive,
