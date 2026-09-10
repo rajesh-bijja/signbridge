@@ -1131,7 +1131,7 @@ export function buildTools(ctx) {
       description:
         'Read a saved chat session: its title, timestamps, and the user/assistant messages in order (the tool-call ' +
         'plumbing is omitted). Use this to pick up what a past session actually established, rather than ' +
-        'summarize_chat_session, which spends an LLM call to paraphrase it.',
+        'summarize_chat_session, which paraphrases it.',
       schema: { threadId: z.string().describe('The chat session id (from list_chat_sessions)') },
       handler: async input => ok(await callApi('/chatThread', withUser({ threadId: input.threadId })))
     },
