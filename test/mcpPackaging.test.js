@@ -196,18 +196,39 @@ test('an unreachable SignBridge is reported as such, and does not kill the serve
 });
 
 test('the documented npx spec is one npm can actually resolve', function () {
-    // `github:owner/repo#main:mcp` parses as a git spec with no committish and no
-    // subdirectory: npm installs the repository root, which has no signbridge-mcp
-    // bin, and the client reports that it could not determine an executable. The
-    // subdirectory separator is `::path:`.
+    // npm cannot install a subdirectory of a repository. It accepts both
+    // `#main::path:mcp` and `#main:mcp` without a word and installs the repository
+    // ROOT either way — verified by running it, after this file asserted the
+    // opposite for a while on the strength of npm's documented grammar. The client
+    // then says only "could not determine executable to run", because the root had
+    // no bin. So the root declares the same bin the mcp/ package does, and the
+    // documented spec must carry no subdirectory suffix.
     ['README.md', path.join('mcp', 'README.md')].forEach(function (rel) {
         const doc = fs.readFileSync(path.join(repoRoot, rel), 'utf8');
-        const specs = doc.match(/github:[^"'\s]+signbridge#[^"'\s]+/g) || [];
+        const specs = doc.match(/github:[^"'\s]+signbridge[^"'\s]*/g) || [];
+        assert.ok(specs.length > 0, rel + ' should still document the from-GitHub spec');
         specs.forEach(function (spec) {
-            assert.match(spec, /#[^:]+::path:mcp$/,
-                rel + ' documents ' + spec + ', which npm resolves to the repository'
-                + ' root rather than the mcp/ subdirectory. Use #<branch>::path:mcp.');
+            assert.doesNotMatch(spec, /#/,
+                rel + ' documents ' + spec + '. Anything after # is a committish, not a'
+                + ' subdirectory: npm installs the repository root regardless, so a spec'
+                + ' that looks like it selects mcp/ only misleads the next reader.');
         });
+    });
+
+    const rootPkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+    assert.strictEqual(rootPkg.bin && rootPkg.bin['signbridge-mcp'], 'mcp/server.js',
+        'a git install lands the whole repository, so the ROOT package.json is what'
+        + ' has to expose the stdio server as an executable. Without this, the'
+        + ' from-GitHub config in the README cannot start.');
+
+    // That bin only runs if the root's own dependencies cover what it imports —
+    // mcp/node_modules does not come along on a git install of the root.
+    const mcpDeps = Object.keys(JSON.parse(
+        fs.readFileSync(path.join(repoRoot, 'mcp', 'package.json'), 'utf8')).dependencies);
+    mcpDeps.forEach(function (dep) {
+        assert.ok(rootPkg.dependencies[dep],
+            'the root package must also depend on ' + dep + ', because the root bin runs'
+            + ' mcp/server.js against the root dependency tree.');
     });
 });
 

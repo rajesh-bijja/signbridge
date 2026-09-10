@@ -74,12 +74,15 @@ to the local SignBridge and its local user. Straight from GitHub instead of npm,
 clone, swap the args for:
 
 ```json
-"args": ["-y", "github:rajesh-bijja/signbridge#main::path:mcp"]
+"args": ["-y", "github:rajesh-bijja/signbridge"]
 ```
 
-Mind the `::path:` separator — `#main:mcp` looks plausible and is a *different*
-spec: npm reads it as the repository root, which has no `signbridge-mcp` bin, and
-the client only reports that it could not determine an executable.
+No subdirectory suffix: **npm cannot install one directory of a repository.** It
+accepts `#main::path:mcp` and `#main:mcp` without complaint and installs the
+repository root either way, so the `signbridge-mcp` bin is declared at the root
+too and this spec resolves. The cost is that a git install builds the whole
+backend's dependencies rather than the four the stdio server needs — fine for a
+one-off, which is why `npx signbridge-mcp` stays the recommended form.
 
 ### b) Streamable HTTP — already running on port 2444
 

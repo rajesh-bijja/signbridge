@@ -53,12 +53,16 @@ Straight from a clone, without npm:
 { "command": "node", "args": ["/absolute/path/to/signbridge/mcp/server.js"] }
 ```
 
-Or from the GitHub repository without cloning (note the `::path:` separator —
-`#main:mcp` is a different, wrong spec that npm reads as the repository root):
+Or from the GitHub repository without cloning:
 
 ```json
-{ "command": "npx", "args": ["-y", "github:rajesh-bijja/signbridge#main::path:mcp"] }
+{ "command": "npx", "args": ["-y", "github:rajesh-bijja/signbridge"] }
 ```
+
+No subdirectory suffix: npm cannot install one directory of a repository, and
+accepts `#main::path:mcp` while quietly installing the root anyway. So the root
+declares this same bin. It does mean a git install builds the whole backend's
+dependencies instead of the four used here.
 
 ### If you prefer one process
 
