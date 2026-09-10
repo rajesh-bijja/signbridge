@@ -144,6 +144,22 @@ the open botocore API models with a click. Every operation of every AWS service
 arrives with its endpoint, method and headers filled in; **Pin To Dashboard** sends
 one straight to the request form.*
 
+### S3 World — see *inside* the object, not just its name
+
+Open `/signbridge/s3world` and "what's in this file?" is a click, not a download:
+parquet as a table, `.xlsx` as sheets, a `.log.gz` as text, a tarball as a member
+list, a notebook as cells, JSON/XML/YAML as a navigable tree. Search is recursive,
+case-insensitive and matches **anywhere** in the key — and it finds folders, including
+empty ones. See [S3 World](#s3-world) for the full format list and search syntax.
+
+### Chat — say it in English, it drives the same actions
+
+`/signbridge/chat` is a tool-calling agent wired to the *same* 58 actions as the
+dashboard and the MCP server, over your own LLM key: *"presign a DescribeInstances
+call with my preprod profile"*, *"what's in the newest parquet under s3://logs/2026/"*.
+Bring any of 12 providers — including AWS Bedrock signed with a profile you already
+have, so Claude needs no new key. See [AI Chat](#ai-chat).
+
 ### Share what you're looking at — a link that expires
 
 <p align="center">
@@ -156,15 +172,22 @@ The confirmation reports the lifetime the link **actually** got, which matters o
 SSO profile: a presigned URL cannot outlive the session credentials that signed it,
 so SignBridge caps it rather than promising an hour it cannot honor.*
 
-### And two more pages worth opening
+### Nothing you run is lost — history remembers the whole exchange
 
-- **S3 World** (`/signbridge/s3world`) — a bucket browser where "what's in this
-  object?" is a click: parquet as a table, `.xlsx` as sheets, a `.log.gz` as text,
-  a tarball as a member list, a notebook as cells. Plus a recursive,
-  case-insensitive, match-anywhere search the console does not have.
-  See [S3 World](#s3-world).
-- **Chat** (`/signbridge/chat`) — a tool-calling agent that drives the same actions
-  in plain English, over your own LLM key. See [AI Chat](#ai-chat).
+![SignBridge history: a table of past invocations with invocation mode, profile, status, time and AuthN mode, and a detail panel showing the full request and response with Re-Run, Pin To Dashboard and Add to Favorites](assets/screenshots/history.png)
+
+*Every presign and invoke is saved with its profile, mechanism, status and time.
+Click a row and the **whole exchange** comes back — request, response headers,
+body — with **Re-Run**, **Pin To Dashboard**, **Add to Favorites** and one-click
+copies. Label a run and you can find it again by name.*
+
+### Favorites — the handful you actually repeat
+
+![SignBridge favorites: a shorter table of saved invocations with the same detail panel, offering Re-Run, Pin To Dashboard and Delete Favorite](assets/screenshots/favorites.png)
+
+*Promote a run out of history and it lives here, with the same detail panel and the
+same **Re-Run**. Useful when three requests out of two hundred are the ones you
+reach for every day.*
 
 ## What you can do with it
 
