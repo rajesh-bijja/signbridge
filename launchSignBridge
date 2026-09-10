@@ -1,0 +1,358 @@
+#!/bin/bash
+#
+# launchSignBridge
+#
+#    NAME
+#      launchSignBridge
+#
+#    DESCRIPTION
+#    This script helps in managing the SignBridge docker process with much ease
+#
+#    NOTES
+#      Builds the image locally from the repo Dockerfile if it is not already
+#      present. Set SIGNBRIDGE_IMAGE to use a prebuilt image from a registry.
+#
+USER_NAME=$(whoami)
+startTime=$(date +%s)
+humanReadableDate="";
+script=$(basename $0)
+
+SCRIPT_DIR=$(dirname "$0")
+cd "$SCRIPT_DIR" || exit
+SCRIPT_DIR=$(pwd);
+cd - > /dev/null
+
+cd ~/
+HOME_DIR=$(pwd);
+cd - > /dev/null || exit
+LOG_DIR="${SCRIPT_DIR}/logs";
+mkdir -pv "${LOG_DIR}"
+# Single runtime base dir on the host: holds per-user artifacts and TLS certs.
+# Fixed location, not configurable: ~/.signbridge.
+SIGNBRIDGE_HOME="${HOME_DIR}/.signbridge"
+mkdir -pv "${SIGNBRIDGE_HOME}/artifacts/userartifacts" "${SIGNBRIDGE_HOME}/keys"
+chmod -R 777 "${SIGNBRIDGE_HOME}"
+
+IMAGE_NAME="signbridge"
+CONTAINER_NAME="signbridge"
+VERSION=""
+# Local image built from this repo's Dockerfile. Override REGISTRY_IMAGE to pull
+# from your own registry instead of building locally.
+REGISTRY_IMAGE="${SIGNBRIDGE_IMAGE:-$IMAGE_NAME}"
+
+LOG_FILENAME="";
+DOCKER_PROCESS_RUNNING="false";
+DOCKER_COMMAND="";
+HTTPS_PORT_INT="2443"
+HTTPS_PORT_EXT="2443"
+# Publish to loopback only. SignBridge has no login and signs with every AWS
+# profile on this machine, so publishing on 0.0.0.0 (docker's default when no
+# address is given) would offer an unauthenticated credential proxy to the whole
+# local network. Override deliberately: BIND_ADDRESS=0.0.0.0 ./launchSignBridge start
+BIND_ADDRESS="${BIND_ADDRESS:-127.0.0.1}"
+NO_ARGS=0
+POSSIBLE_VALUES="[start, stop, delete]";
+OPERATION_TYPE="";
+PORT_NUM="";
+
+# Mount the whole ~/.aws directory (not individual files) so the "Sync to AWS
+# Config" feature can create/update config + credentials and have them reach the
+# host — including when a file doesn't exist yet on the host.
+AWS_DIR="${HOME_DIR}/.aws"
+REMOTE_AWS_DIR="/var/www/.aws"
+
+REMOTE_SIGNBRIDGE_HOME="/var/www/.signbridge"
+
+# Sandbox mode runs user code in a throwaway sibling container, which requires
+# access to the host's Docker daemon socket. That is a privileged grant (socket
+# access == root on the host), so it is opt-out: set SIGNBRIDGE_SANDBOX=0 to run
+# without it. Everything else works either way; the Sandbox page then reports
+# Docker as unavailable.
+DOCKER_SOCK="/var/run/docker.sock"
+ENABLE_SANDBOX="${SIGNBRIDGE_SANDBOX:-1}"
+# Execution image for Sandbox mode. Built on demand at start (see below) so there
+# is no separate setup command; override to use a prebuilt one from a registry.
+SANDBOX_IMAGE_TAG="${SANDBOX_IMAGE:-signbridge-sandbox:latest}"
+
+logAndPrintMsg()
+{
+        logmsg=$1
+        echo "$logmsg" 2>&1 | tee -ai "$LOG_FILENAME"
+}
+
+logOnlyMsg()
+{
+        logmsg=$1
+        echo "$logmsg" >> "$LOG_FILENAME"
+}
+
+detectOSType()
+{
+  OS_TYPE=$(uname | tr '[:upper:]' '[:lower:]')
+}
+
+createLogFile()
+{
+  detectOSType
+  humanReadableDate=""
+  if [[ "$OS_TYPE" =~ "linux" ]]
+  then
+    humanReadableDate=$(date -d @${startTime});
+    timestamp=$(date --date="${humanReadableDate}" +'%Y-%m-%d_%H.%M.%S');
+  else
+    humanReadableDate=$(date -r ${startTime});
+    timestamp=$(date -r "${startTime}" +'%Y-%m-%d_%H.%M.%S');
+  fi
+  LOG_FILENAME="${LOG_DIR}/signbridge_${OPERATION_TYPE}_${timestamp}.log";
+  echo "Log file: [ ${LOG_FILENAME} ] created at ${humanReadableDate}" 2>&1 | tee -ai "$LOG_FILENAME"
+  echo "" >> $LOG_FILENAME
+  echo "signbridge: [${OPERATION_TYPE}]" 2>&1 | tee -ai "$LOG_FILENAME"
+  echo "" >> $LOG_FILENAME
+}
+
+checkForError()
+{
+  ret=$1
+    msg=$2
+  if [ $ret -ne 0 ]
+  then
+    echo "Failure occurred in $0 !!"
+    echo "$msg";
+    exit "$ret";
+  fi
+  return "$ret"
+}
+
+checkForErrorAndLog()
+{
+        ret=$1
+        msg=$2
+        if [ $ret -ne 0 ]
+        then
+                logmsg="Failure occurred in $0 !!"
+                echo "$logmsg" 2>&1 | tee -ai "$LOG_FILENAME"
+                echo "$msg" 2>&1 | tee -ai "$LOG_FILENAME"
+                exit "$ret";
+        fi
+        return "$ret"
+}
+
+printUsage () {
+  echo "This script helps in managing (starting/stopping/deleting) the local SignBridge docker container."
+  echo ""
+  echo "Usage: $script -o <operation> [-v <image_tag>] [-p <port_num>]"
+  echo "-v <image_tag>                     --> image tag to run/build. Optional; defaults to 'latest'."
+  echo "-o <operation>                     --> Type of operation to be performed. Possibles values are: ${POSSIBLE_VALUES}"
+  echo "-p <port_num>                     --> Host Port to be used for mapping to the container port. If not specified defaults to 2443"
+  echo ""
+  echo "start             --> start the docker container (builds the image locally if not present)"
+  echo "stop              --> stop the docker container"
+  echo "delete            --> stop and delete the docker container"
+  echo ""
+  echo "Ex:"
+  echo "$script -o start"
+  echo "$script -o start -p 32443"
+  echo "$script -o stop"
+  echo "$script -o delete"
+  echo ""
+  exit 1
+}
+
+if [ $# -eq "$NO_ARGS" ]    # Script invoked with no command-line args?
+then
+        printUsage
+        exit 1;
+fi
+
+
+while getopts "o:v:p:h" Option
+do
+  case $Option in
+    o     ) OPERATION_TYPE=$OPTARG ;;
+    v     ) VERSION=$OPTARG ;;
+    p     ) PORT_NUM=$OPTARG ;;
+    h     ) printUsage ;;
+    *     ) echo "Unimplemented option chosen."; echo ""; printUsage ;;  # Default.
+  esac
+done
+
+function checkInputParameters {
+
+  if [ "x${OPERATION_TYPE}" = "x" ]; then
+    echo "Operation type not specified. Possible values: ${POSSIBLE_VALUES}. Exiting now.";
+    echo "";
+        printUsage
+  fi
+  if [ "x${PORT_NUM}" = "x" ]; then
+      echo "Port number not specified. Defaulting to 2443.";
+      HTTPS_PORT_EXT="2443"
+      echo "";
+  else
+      echo "Using the specified Port number: ${PORT_NUM}.";
+      HTTPS_PORT_EXT="${PORT_NUM}"
+  fi
+
+  OPERATION_TYPE=$(echo "$OPERATION_TYPE" | tr '[:upper:]' '[:lower:]')
+  if [ "${OPERATION_TYPE}" = "start" ] || [ "${OPERATION_TYPE}" = "stop" ] || [ "${OPERATION_TYPE}" = "delete" ]; then
+        echo "operation type specified : ${OPERATION_TYPE}"
+        if [ "${OPERATION_TYPE}" = "start" ]; then
+          if [ "x${VERSION}" = "x" ]; then
+            echo "No version specified; using 'latest' (image will be built locally if missing).";
+            echo "";
+          fi
+        fi
+    else
+      echo "Possible values for operations are: ${POSSIBLE_VALUES}";
+      echo "";
+    echo "";
+      printUsage
+  fi
+  createLogFile
+  docker --version >& /dev/null
+  checkForErrorAndLog "$?" "docker seems to be not installed or not available in path. Ensure docker is installed and available in path and retry the operation."
+
+
+}
+
+function runScripts {
+  if [ "${OPERATION_TYPE}" = "start" ]; then
+    startDockerContainer
+  elif [ "${OPERATION_TYPE}" = "stop" ]; then
+    stopDockerContainer
+  elif [ "${OPERATION_TYPE}" = "delete" ]; then
+    removeDockerContainer
+  else
+    logAndPrintMsgAndExit "invalid operation specified: ${OPERATION_TYPE}. Can not continue" "1"
+  fi
+}
+
+function runDockerContainer {
+
+  DOCKER_EXEC=$(which docker);
+  # BIND_HOST=0.0.0.0 inside the container: a container process must bind all of
+  # its own interfaces to be reachable through a published port. The publish
+  # address above is what keeps that off the network.
+  DOCKER_COMMAND="${DOCKER_EXEC} run --name ${CONTAINER_NAME} --publish ${BIND_ADDRESS}:${HTTPS_PORT_EXT}:${HTTPS_PORT_INT} -e BIND_HOST=0.0.0.0"
+
+  # Ensure the host ~/.aws exists so the directory mount always has something to
+  # bind (and so "Sync to AWS Config" can create config/credentials on the host).
+  mkdir -p "${AWS_DIR}"
+  DOCKER_COMMAND="${DOCKER_COMMAND} -v ${AWS_DIR}:${REMOTE_AWS_DIR}"
+  if [ "x${VERSION}" = "x" ]; then
+    REGISTRY_IMAGE_TAG="${REGISTRY_IMAGE}:latest"
+  else
+    REGISTRY_IMAGE_TAG="${REGISTRY_IMAGE}:${VERSION}"
+  fi
+
+  # Build the image locally from this repo if it isn't already available.
+  if ! docker image inspect "${REGISTRY_IMAGE_TAG}" >/dev/null 2>&1; then
+    logAndPrintMsg "Image ${REGISTRY_IMAGE_TAG} not found locally. Building from ${SCRIPT_DIR}/Dockerfile ..."
+    docker build -t "${REGISTRY_IMAGE_TAG}" "${SCRIPT_DIR}" 2>&1 | tee -ai "$LOG_FILENAME"
+    checkForErrorAndLog "${PIPESTATUS[0]}" "Failed to build docker image: ${REGISTRY_IMAGE_TAG}"
+  fi
+
+  DOCKER_COMMAND="${DOCKER_COMMAND} -v ${SIGNBRIDGE_HOME}:${REMOTE_SIGNBRIDGE_HOME}:z -e USER_NAME=${USER_NAME}"
+
+  if [ "${ENABLE_SANDBOX}" != "0" ]; then
+    if [ -S "${DOCKER_SOCK}" ]; then
+      # Build the Sandbox execution image if it isn't on the host yet, so Sandbox
+      # mode needs no separate setup step. Only when missing: rebuilding on every
+      # start would add a needless step to the common case.
+      if ! docker image inspect "${SANDBOX_IMAGE_TAG}" >/dev/null 2>&1; then
+        logAndPrintMsg "Sandbox image ${SANDBOX_IMAGE_TAG} not found locally. Building from ${SCRIPT_DIR}/sandbox ..."
+        logAndPrintMsg "The first build pulls toolchains for four languages, so expect several minutes."
+        SANDBOX_IMAGE="${SANDBOX_IMAGE_TAG}" "${SCRIPT_DIR}/sandbox/build-sandbox-image.sh" 2>&1 | tee -ai "$LOG_FILENAME"
+        # A failed sandbox build must not stop the app: everything except Sandbox
+        # mode still works, and the Sandbox page reports the missing image.
+        if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+          logAndPrintMsg "WARNING: failed to build ${SANDBOX_IMAGE_TAG}. Starting anyway; Sandbox mode will report the image as unavailable."
+        fi
+      fi
+      # SANDBOX_HOST_BASE_DIR: `docker run -v <src>` is resolved by the daemon on
+      # the HOST, so the per-run workspace must be named by its host path, not the
+      # ${REMOTE_SIGNBRIDGE_HOME} path it has inside the container.
+      DOCKER_COMMAND="${DOCKER_COMMAND} -v ${DOCKER_SOCK}:${DOCKER_SOCK} -e SANDBOX_HOST_BASE_DIR=${SIGNBRIDGE_HOME} -e SANDBOX_IMAGE=${SANDBOX_IMAGE_TAG}"
+    else
+      logAndPrintMsg "Docker socket ${DOCKER_SOCK} not found; starting without Sandbox mode."
+    fi
+  else
+    logAndPrintMsg "SIGNBRIDGE_SANDBOX=0; starting without Sandbox mode (no Docker socket mount)."
+  fi
+
+  DOCKER_COMMAND="${DOCKER_COMMAND} -d ${REGISTRY_IMAGE_TAG}"
+
+  logOnlyMsg "final docker command generated is: "
+  logOnlyMsg "$DOCKER_COMMAND"
+  eval "$DOCKER_COMMAND" 2>&1 | tee -ai "$LOG_FILENAME"
+
+  checkForErrorAndLog "${PIPESTATUS[0]}" "Failed to start docker container: ${CONTAINER_NAME} at ${humanReadableDate}!"
+
+  IS_DOCKER_PROCESS_STARTED=$(docker ps | grep ${CONTAINER_NAME} | awk '{print $1}')
+  if [ "${IS_DOCKER_PROCESS_STARTED}" = "" ]; then
+      logAndPrintMsg "Failed to start container: ${CONTAINER_NAME}"
+      docker ps -a | grep ${CONTAINER_NAME}
+      logAndPrintMsg "Printing the docker logs of the container: ${CONTAINER_NAME} if available:"
+      logAndPrintMsg $(docker logs ${CONTAINER_NAME})
+      logAndPrintMsgAndExit "Exiting now !" "1"
+  fi
+  logAndPrintMsg $(docker logs ${CONTAINER_NAME})
+  logAndPrintMsg "Docker container: ${CONTAINER_NAME} started successfully at ${humanReadableDate} ..."
+}
+
+function stopDockerContainer {
+    DOCKER_PROCESS=$(docker ps | grep ${CONTAINER_NAME} | awk '{print $1}')
+    if [ "${DOCKER_PROCESS}" = "" ]; then
+        logAndPrintMsg "${CONTAINER_NAME} docker container is not running. Nothing to stop"
+    else
+        docker stop -t 0 ${CONTAINER_NAME}
+        checkForErrorAndLog "$?" "Error in stopping the ${CONTAINER_NAME} docker container at ${humanReadableDate} !"
+        logAndPrintMsg "${CONTAINER_NAME} docker container stopped successfully at ${humanReadableDate} ..."
+    fi
+}
+
+function removeDockerContainer {
+  stopDockerContainer
+    DOCKER_STOP_PROCESS=$(docker ps -a | grep ${CONTAINER_NAME} | awk '{print $1}')
+    if [ "${DOCKER_STOP_PROCESS}" = "" ]; then
+        logAndPrintMsg "${CONTAINER_NAME} docker container is not available. Nothing to remove at ${humanReadableDate}"
+    else
+        docker rm ${CONTAINER_NAME}
+        checkForErrorAndLog "$?" "Error in removing the ${CONTAINER_NAME} docker container at ${humanReadableDate} !"
+        logAndPrintMsg "${CONTAINER_NAME} docker Container removed successfully at ${humanReadableDate} ..."
+    fi
+}
+
+function checkDockerContainerIsRunning {
+    DOCKER_PROCESS_RUNNING="false"
+    DOCKER_PROCESS=$(docker ps | grep ${CONTAINER_NAME} | awk '{print $1}')
+    if [ "${DOCKER_PROCESS}" = "" ]; then
+        logAndPrintMsg "Docker Container is not running ..."
+    else
+        logAndPrintMsg "Docker Container is running ..."
+        DOCKER_PROCESS_RUNNING="true"
+    fi
+}
+
+function startDockerContainer {
+    DOCKER_PROCESS=$(docker ps | grep ${CONTAINER_NAME} | awk '{print $1}')
+    if [ "${DOCKER_PROCESS}" = "" ]; then
+        logAndPrintMsg "${CONTAINER_NAME} docker container is not running. Stop and remove previous docker container if available ..."
+        removeDockerContainer
+        logAndPrintMsg "${CONTAINER_NAME} Attempting to start docker container at ${humanReadableDate} ..."
+        runDockerContainer
+        checkForErrorAndLog "$?" "Error in starting the ${CONTAINER_NAME} docker container !"
+        checkDockerContainerIsRunning
+        if [ "${DOCKER_PROCESS_RUNNING}" = "true" ]; then
+            logAndPrintMsg "${CONTAINER_NAME} docker container is started successfully at ${humanReadableDate} ..."
+        else
+            logAndPrintMsg $(docker logs ${CONTAINER_NAME})
+            logAndPrintMsgAndExit "Error in starting ${CONTAINER_NAME} docker container at ${humanReadableDate} !" "1"
+        fi
+    else
+        logAndPrintMsg "${CONTAINER_NAME} docker container is already running. No action required."
+    fi
+    
+}
+
+checkInputParameters
+runScripts

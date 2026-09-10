@@ -1,0 +1,29 @@
+# Keep the build context small and free of secrets / local state.
+node_modules
+frontend/node_modules
+mcp/node_modules
+frontend/dist
+
+# Runtime state and secrets must never be baked into the image.
+data
+keys
+logs
+.env
+.env.*
+.aws
+# Don't bake a local config into the image; the image seeds one from
+# config.properties.example, and compose bind-mounts the real file at runtime.
+config.properties
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# VCS / editor / OS
+.git
+.gitignore
+.idea
+.vscode
+.DS_Store
+*.log

@@ -1,0 +1,112 @@
+services:
+  # The Sandbox execution image, built as part of `docker compose up` so Sandbox
+  # mode needs no separate setup command.
+  #
+  # This is a one-shot service, not a long-running one: its only job is to
+  # produce signbridge-sandbox:latest on the host daemon. Compose then runs it
+  # once, where the image's default CMD prints the toolchain versions it holds
+  # (Python, Node, tsc, Java, boto3) and exits 0 — so a broken image surfaces at
+  # `up` time instead of on the user's first Run. The app service waits for that
+  # clean exit via service_completed_successfully.
+  #
+  # It is not the container user code runs in. Each Run starts its own throwaway
+  # container from this image (see lib/sandbox/sandboxRunner.js), which is why the
+  # app needs the Docker socket mounted below.
+  sandbox-image:
+    build:
+      context: ./sandbox
+      args:
+        # Empty means "resolve the current AWS SDK for Java v2 release at build
+        # time". Pin it here or via the environment for a reproducible build.
+        AWS_SDK_VERSION: ${AWS_SDK_VERSION:-}
+    image: ${SANDBOX_IMAGE:-signbridge-sandbox:latest}
+    container_name: signbridge-sandbox-image
+    # Build locally, never pull: this image name is local-only, so a pull attempt
+    # would fail with "pull access denied" on a first run. A rebuild with a warm
+    # layer cache costs a second or two.
+    pull_policy: build
+    # No network for the verification run, and no restart — a one-shot service
+    # that gets restarted would loop forever.
+    network_mode: none
+    restart: "no"
+
+  signbridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: signbridge
+    # Build on every `up`, don't reuse a stale image. The React UI is baked into
+    # the image (Dockerfile runs `npm run build` and copies frontend/dist), so a
+    # reused image serves an old bundle: `docker compose up -d` would restart the
+    # container and still show you yesterday's UI, with nothing to indicate why.
+    # There is no registry image for this name, so building is the only correct
+    # policy anyway; the layer cache makes an unchanged rebuild take seconds.
+    pull_policy: build
+    depends_on:
+      # Don't start the app until the Sandbox image exists and verified clean.
+      sandbox-image:
+        condition: service_completed_successfully
+    ports:
+      # Published to 127.0.0.1 ONLY, not to 0.0.0.0. SignBridge has no login and
+      # signs with every AWS profile on this machine, so a plain "2443:2443" would
+      # hand an unauthenticated credential proxy to everyone on the same network
+      # — a café or office LAN included — with nothing visible to indicate it.
+      # Set BIND_ADDRESS to expose it deliberately (and read [server] allowedHosts
+      # in config.properties.example before you do).
+      - "${BIND_ADDRESS:-127.0.0.1}:${HTTPS_PORT:-2443}:2443"
+    environment:
+      NODE_ENV: development
+      # NODE_TLS_REJECT_UNAUTHORIZED is deliberately absent. It was "0" so the app
+      # could call its own self-signed endpoint, but the variable is process-global:
+      # it also stopped verifying certificates for outbound calls to STS, IAM, S3,
+      # EKS and the configured LLM provider, silently. The loopback self-calls set
+      # rejectUnauthorized:false on their own https.Agent instead, which is scoped
+      # to those requests. See the note in the Dockerfile.
+      USER_NAME: ${USER_NAME:-}
+      # Inside the container the process must bind all interfaces to be reachable
+      # through the published port at all; the 127.0.0.1 above is what keeps that
+      # from reaching the network. Outside a container the default is 127.0.0.1
+      # (see [server] bindHost). The Host header is still checked either way, so a
+      # remote page cannot resolve its own name here and drive the API.
+      BIND_HOST: 0.0.0.0
+      # Deliberately NO api-key variable here. Provider keys are entered in
+      # Settings -> AI features, verified there, and stored encrypted under
+      # ~/.signbridge — there is no .env file in a SignBridge install and nothing
+      # asks you to put a secret in one. Every variable below is a non-secret
+      # operator knob, and all of them are safe to leave unset (`:-` makes them
+      # empty strings, and empty reads the same as absent).
+      #
+      # LLM_ENABLED is the operator master switch: the only way to turn AI
+      # features off for a deployment such that a user pasting a key in Settings
+      # cannot turn them back on. Set LLM_ENABLED=false to ship with no AI.
+      LLM_ENABLED: ${LLM_ENABLED:-}
+      # Sandbox mode starts sibling containers, and `docker run -v <src>` is
+      # resolved by the daemon on the HOST — so the per-run workspace has to be
+      # named by its host path, not the /var/www/.signbridge path it has in here.
+      # This is that host path; it must match the ~/.signbridge mount below.
+      SANDBOX_HOST_BASE_DIR: ${HOME}/.signbridge
+      # Kept in step with the sandbox-image service's tag above, so overriding
+      # SANDBOX_IMAGE renames the built image AND the one the server looks for.
+      # Empty falls through to [sandbox] image= in config.properties.
+      SANDBOX_IMAGE: ${SANDBOX_IMAGE:-}
+    volumes:
+      # Mount the whole ~/.aws DIRECTORY (read-write), not individual files. The
+      # "Sync to AWS Config" feature needs to create/update config + credentials,
+      # including cases where a file doesn't exist yet on the host (e.g. an
+      # IAM-only setup with no config). Single-file bind mounts can't support
+      # that: a missing host file has nothing to mount, and files the writer
+      # creates inside the container wouldn't reach the host. A directory mount
+      # lets new/updated files propagate both ways.
+      - ~/.aws:/var/www/.aws
+      # All runtime state (per-user artifacts + auto-generated TLS certs) lives
+      # under ~/.signbridge in the container user's home (/var/www). Certs are
+      # generated here on first run. Maps to the host's ~/.signbridge.
+      - ~/.signbridge:/var/www/.signbridge
+      - ./config.properties:/usr/src/app/config.properties:ro
+      # Sandbox mode only: lets this container start the throwaway sibling
+      # container that executes user code. This is a privileged grant — access
+      # to the daemon socket is equivalent to root on the host — so remove this
+      # line if you don't want Sandbox mode. Everything else keeps working; the
+      # Sandbox page then reports Docker as unavailable.
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped

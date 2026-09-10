@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+mcp/node_modules/
+
+# Build output
+frontend/dist/
+
+# Runtime state lives under ~/.signbridge (outside the repo), but ignore these
+# in case anything is ever created locally.
+data/
+logs/
+.signbridge/
+
+# Secrets & credentials — never commit
+.env
+.env.*
+# SignBridge has no .env-based configuration: operator knobs live in
+# config.properties (track the template, config.properties.example, not the real
+# file) and provider API keys are entered in Settings and stored encrypted under
+# ~/.signbridge. These patterns stay so a stray .env can never be committed.
+config.properties
+.aws/
+keys/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Local tooling (personal Claude Code settings, etc.)
+.claude/settings.local.json
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.log

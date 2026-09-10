@@ -1,0 +1,33 @@
+{
+  "name": "signbridge-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@cloudscape-design/components": "^3.0.822",
+    "@cloudscape-design/global-styles": "^1.0.32",
+    "@monaco-editor/react": "^4.7.0",
+    "axios": "^1.12.0",
+    "bootstrap": "^5.3.3",
+    "monaco-editor": "^0.56.0",
+    "react": "^18.3.1",
+    "react-bootstrap": "^2.10.9",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.1.0",
+    "react-router-dom": "^7.5.0",
+    "remark-gfm": "^4.0.1",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.6"
+  },
+  "overrides": {
+    "dompurify": "^3.4.15"
+  }
+}

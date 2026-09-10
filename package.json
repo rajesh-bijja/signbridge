@@ -1,0 +1,49 @@
+{
+  "name": "signbridge",
+  "version": "1.0.0",
+  "description": "SignBridge — AWS/REST API presigning and invocation with SignBridge engine",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "server.js",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "start": "node server.js",
+    "build:web": "cd frontend && npm install && npm run build",
+    "build:sandbox": "./sandbox/build-sandbox-image.sh",
+    "docs:comparison": "node scripts/gen-comparison.mjs"
+  },
+  "author": "Rajesh Bijja",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rajesh-bijja/signbridge.git"
+  },
+  "homepage": "https://github.com/rajesh-bijja/signbridge#readme",
+  "bugs": {
+    "url": "https://github.com/rajesh-bijja/signbridge/issues"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.4.1",
+    "axios": "^1.14.0",
+    "compression": "^1.8.1",
+    "express": "^5.1.0",
+    "fflate": "^0.8.3",
+    "follow-redirects": "^1.15.11",
+    "hyparquet": "^1.29.2",
+    "hyparquet-compressors": "^1.1.1",
+    "jsonfile": "^6.1.0",
+    "jwt-decode": "^4.0.0",
+    "node-forge": "^1.4.0",
+    "openai": "^7.4.0",
+    "properties-reader": "^2.2.0",
+    "recursive-readdir": "^2.2.3",
+    "socket.io": "^4.8.1",
+    "ssh2": "^1.11.0",
+    "xml2js": "^0.6.2",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.1"
+  },
+  "keywords": []
+}

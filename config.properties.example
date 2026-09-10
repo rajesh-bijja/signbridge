@@ -1,0 +1,197 @@
+[server]
+PORT=2443
+# Network exposure. SignBridge has no login and signs with every AWS profile on
+# this machine, so the address it binds is the whole of its access control.
+#
+# bindHost (env override: BIND_HOST) — the interface to listen on. The default is
+# 127.0.0.1: reachable from this machine only. Docker sets BIND_HOST=0.0.0.0,
+# because a container process has to bind all of its own interfaces to be
+# reachable through a published port at all — compose then publishes that port to
+# 127.0.0.1 on the host, so the container is not on the network either.
+#
+# Setting this to 0.0.0.0 outside a container publishes an unauthenticated API
+# that can use your AWS credentials to anyone who can reach the port. The server
+# logs a warning when it does.
+bindHost=127.0.0.1
+# allowedHosts — extra Host header values to answer for, comma-separated (host or
+# host:port). Loopback names are always accepted; everything else is refused with
+# a 421, which is what stops a remote page from resolving its own name to
+# 127.0.0.1 and then driving this API as same-origin (DNS rebinding). Add a name
+# here only if you serve SignBridge under it, e.g.
+#   allowedHosts=signbridge.internal,192.168.1.50:2443
+allowedHosts=
+# Runtime state lives in a fixed, non-configurable base directory: ~/.signbridge
+# (holds artifacts/ and keys/). The names below are the sub-directories/files
+# created under each user's artifacts dir.
+artifactsDirName=artifacts
+userArtifactsSubDir=userartifacts
+keysDirName=keys
+historyDirName=history
+favoritesDirName=favorites
+collectionsDirName=collections
+chatDirName=chat
+settingsDirName=settings
+scriptsDirName=scripts
+profilesDirName=profiles
+settingsFileName=settings.json
+# Sandbox mode saved scripts: <userDir>/<sandboxDirName>/<sandboxScriptsDirName>.
+# (Execution settings live in the [sandbox] section below.)
+sandboxDirName=sandbox
+sandboxScriptsDirName=scripts
+[awscatalog]
+# On-demand AWS API catalog. The Templates page lets users import a ready-made
+# Postman collection for any AWS service, generated from the open (Apache-2.0)
+# botocore service models. Models are fetched from modelBaseUrl and cached under
+# the user's artifacts dir, so repeat imports and offline use need no network.
+#
+# For an air-gapped deployment: point modelBaseUrl at an internal mirror of the
+# botocore data dir, or pre-seed the cache directory. The service list itself is
+# bundled (lib/aws-service-index.json), so the picker always populates offline.
+modelBaseUrl=https://raw.githubusercontent.com/boto/botocore/develop/botocore/data
+# Cache directory name (under each user's artifacts dir).
+modelCacheDirName=awsmodelcache
+# Default region used for generated endpoint hosts.
+defaultRegion=us-east-1
+
+[sandbox]
+# Sandbox mode — the third invocation mode, alongside Rest_Api and Cli. The user
+# writes Python / JavaScript / TypeScript / Java in the built-in IDE and presses
+# Run; the code executes in a throwaway Docker container with the selected
+# profile's AWS credentials already in its environment.
+#
+# Prerequisites:
+#   1. Docker must be reachable from the server process. If SignBridge itself
+#      runs in a container, bind-mount the Docker socket:
+#        -v /var/run/docker.sock:/var/run/docker.sock
+#   2. The execution image must exist. `docker compose up` and ./launchSignBridge
+#      build it for you; build it by hand only for a local `npm start` run:
+#        ./sandbox/build-sandbox-image.sh
+#
+# The Sandbox page reports which of these is missing, so nothing fails silently.
+#
+# Execution image (override with the SANDBOX_IMAGE environment variable).
+image=signbridge-sandbox:latest
+# Docker client binary (override with SANDBOX_DOCKER_BIN).
+dockerBin=docker
+# Per-run workspace directory name, under each user's artifacts dir. Each run
+# gets a fresh sub-directory that is deleted when the run ends.
+runsDirName=sandboxruns
+# Wall-clock limit for a Run. Runaway code is killed at this point.
+timeoutSeconds=60
+# Wall-clock limit for a Validate (syntax/type check). Checks get no network.
+checkTimeoutSeconds=30
+# Container resource caps. memoryLimit accepts Docker units (e.g. 512m, 2g).
+memoryLimit=768m
+cpuLimit=1.0
+pidsLimit=256
+# Size of the writable tmpfs mounted at /tmp inside the container. The workspace
+# itself is mounted read-only, so /tmp is the only place user code can write.
+tmpfsSize=128m
+# Output captured per run. Beyond this the run is stopped and the output is
+# marked truncated — an unbounded stream is nearly always a runaway loop.
+maxOutputBytes=1048576
+# Largest source file that may be submitted.
+maxCodeBytes=262144
+# Concurrent runs allowed per user, so a burst of clicks cannot flood Docker.
+maxConcurrentRunsPerUser=3
+# Saved scripts retained per user.
+maxSavedScripts=200
+
+[logging]
+# error | warn | info | debug   (env override: LOG_LEVEL)
+#
+# `debug` prints the full signing trace for every request: canonical request,
+# canonical headers, string-to-sign, the resolved profile, and the AWS/SSO response
+# bodies. That is the only practical way to debug a SigV4 signature mismatch, which
+# is why it is kept — but it is hundreds of lines per request, so it is off by
+# default. Turn it on for one run rather than leaving it on.
+#
+# Every value logged at any level is passed through lib/redact.js first, so a debug
+# trace still has no secret access key, session token, bearer token or API key in
+# it. `docker logs` is the artifact people paste into an issue; it has to be safe
+# to paste.
+level=info
+
+[ssl]
+KEYNAME=signbridge_key.pem
+CERTNAME=signbridge_cert.pem
+[auth]
+# SignBridge has no login. Every request runs as this single local user.
+defaultUserName=signbridgeuser
+defaultDisplayName=SignBridge User
+defaultEmail=signbridgeuser@localhost
+[app]
+routePrefix=signbridge
+projectName=signbridge
+displayName=SignBridge
+tagline=Presign URLs. Invoke APIs. Bridge IAM & SSO roles.
+engineName=SignBridge
+authLabel.iamUser=AWS IAM User
+authLabel.ssoUser=AWS SSO / IAM Identity Center
+authLabel.ec2Instance=AWS EC2 Instance Role
+authLabel.irsa=AWS IRSA (EKS Service Account)
+authLabel.restBasic=Basic Auth
+authLabel.restBearer=Bearer Token
+authLabel.generic=Generic REST (no signing)
+[llm]
+# AI chat is enabled by default — it's a core feature of SignBridge.
+#
+# The provider, the API key and the model are NOT configured here. Connect a
+# provider in the UI: Settings -> AI features. SignBridge supports OpenAI,
+# Anthropic, AWS Bedrock (Claude), OpenRouter, Google Gemini, Cursor, Groq,
+# Mistral, DeepSeek, xAI, Azure OpenAI and a local Ollama; keys are encrypted at
+# rest under ~/.signbridge and the model is picked from the list the provider says
+# your key can use. Bedrock needs no key at all — it can sign with any AWS profile
+# you already have here (see the note about the Cursor provider below).
+#
+# enabled=false is the operator's master switch: it hides/disables chat
+# regardless of what any user has connected.
+enabled=true
+# Reasoning effort for reasoning models (o-series / GPT-5.x, Claude thinking
+# variants): minimal|low|medium|high. Ignored by non-reasoning models.
+# Blank = provider default.
+reasoningEffort=
+# Sampling temperature for non-reasoning models (ignored by reasoning models).
+temperature=0
+# Safety cap on the agent's tool-call loop (model->tool->model iterations per turn).
+maxToolIterations=8
+# NOTE: No API key is ever stored in this file, and there is no .env file to put
+# one in either. Keys are entered in Settings -> AI features, verified there, and
+# stored encrypted (AES-256-GCM) under ~/.signbridge. For an unattended deploy
+# that cannot use the Settings page (Kubernetes, systemd, CI), the environment
+# variable LLM_API_KEY is honoured as a last-resort fallback — a provider
+# configured in Settings always wins over it.
+
+[cursor]
+# Only used when the active AI provider is Cursor. Cursor sells an agent rather
+# than model access — it has no chat-completions endpoint — so SignBridge answers
+# those turns by running the local Cursor CLI and handing it SignBridge's own MCP
+# tools, which means the agent drives the same tools the dashboard uses.
+#
+# Requirements: the CLI must be installed on the machine running SignBridge, and
+# SignBridge's MCP dependencies must be present. The Docker image ships both (see
+# INSTALL_CURSOR_CLI in the Dockerfile), so nothing extra is needed there. For a
+# local `npm start`: curl https://cursor.com/install -fsS | bash, and
+# cd mcp && npm install. Settings -> AI features -> Test connection reports both
+# separately from the key, so a missing piece is named rather than guessed at.
+#
+# The CLI binary. Env override: CURSOR_CLI_BIN (an absolute path is fine).
+cliBin=agent
+# Per-thread scratch working directory, under each user's artifacts dir. The agent
+# runs with tool approval forced (a headless agent has no way to be asked), which
+# also grants it shell and file access in its working directory — so that
+# directory is this empty one, holding only the generated .cursor/mcp.json and
+# AGENTS.md. Never the repo, never a home directory.
+runsDirName=cursorruns
+# The MCP server name the agent sees. Also the tool prefix (signbridge-invoke_api)
+# and the name SignBridge approves in the CLI once, by name — deliberately not
+# Cursor's --approve-mcps, which would approve every MCP server in the user's
+# config for this run.
+mcpServerName=signbridge
+# An agent turn runs a whole tool loop, so this is generous compared with a single
+# completion.
+timeoutSeconds=300
+# Hard cap on the CLI's output for one turn (bytes); exceeding it stops the run.
+maxOutputBytes=2097152
+# Concurrent agent turns per user. Each is a separate CLI process.
+maxConcurrentRunsPerUser=2
