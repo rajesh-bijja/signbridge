@@ -110,6 +110,56 @@ test('every stored credential field on a profile is covered, not just the STS on
     assert.doesNotMatch(JSON.stringify(out), /wJalrXUtnFEMI|hunter2|BEGIN OPENSSH/);
 });
 
+test('the SSO portal token cached beside the STS triple is redacted too', function () {
+    // Found by driving the stdio server for real: list_profiles returned the STS
+    // triple correctly redacted and, two levels down in the same object, the raw
+    // SSO access token — which can be exchanged at the portal for fresh role
+    // credentials, so the redaction next to it was worth little. ssoUtils caches
+    // the whole OIDC response, so whatever the identity provider returned is here.
+    const out = scrubForModel({
+        profileName: 'sso-profile',
+        roleCredentials: {
+            accessKeyId: 'ASIAEXAMPLE123456789',
+            secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+            sessionToken: 'IQoJb3JpZ2luX2VjEXAMPLESESSIONTOKEN',
+            expiration: 1788981865000,
+            accessTokenDetails: {
+                accessToken: 'aoaEXAMPLEssoPortalAccessTokenNotReal',
+                refreshToken: 'EXAMPLEssoRefreshTokenNotReal',
+                idToken: 'eyJhbGciOiJIUzI1NiJ9.EXAMPLE.id',
+                tokenType: 'Bearer',
+                expiresIn: 24810,
+                expiresInMilliseconds: 1789084059663
+            }
+        }
+    });
+    const details = out.roleCredentials.accessTokenDetails;
+
+    assert.match(details.accessToken, /^\[redacted/);
+    assert.match(details.refreshToken, /^\[redacted/, 'a refresh token outlives the access token');
+    assert.match(details.idToken, /^\[redacted/);
+    // What the model actually needs from this object is whether the session is live.
+    assert.strictEqual(details.tokenType, 'Bearer');
+    assert.strictEqual(details.expiresIn, 24810);
+    assert.strictEqual(details.expiresInMilliseconds, 1789084059663);
+    assert.doesNotMatch(JSON.stringify(out), /aoaEXAMPLE|EXAMPLEssoRefresh|EXAMPLE\.id/);
+});
+
+test('accessToken is redacted where SignBridge cached it, not wherever it appears', function () {
+    // The scope is the container, not the field name: the same key in a fetched
+    // response body or a previewed object is the user's content and the answer to
+    // the question they asked.
+    const out = scrubForModel({
+        response: {
+            responseStatusCode: 200,
+            responseData: { accessToken: 'the-api-under-test-returned-this' }
+        },
+        preview: { kind: 'json', rows: [{ accessToken: 'in-the-file' }] }
+    });
+    assert.strictEqual(out.response.responseData.accessToken, 'the-api-under-test-returned-this');
+    assert.strictEqual(out.preview.rows[0].accessToken, 'in-the-file');
+});
+
 test('an OAuth2 token-fetch field holding a client secret is masked', function () {
     // bearerTokenFields keys are the OAuth spec's and user-chosen, so this is the
     // one place a substring rule is right.

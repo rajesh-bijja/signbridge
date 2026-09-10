@@ -155,6 +155,19 @@ const SECRET_FIELDS = new Set([
 // Not secret, and worth keeping: it answers "which credentials was that?".
 const MASKED_FIELDS = new Set(['accesskeyid', 'awsaccesskeyid'])
 
+// An SSO profile caches the whole OIDC token response under
+// `roleCredentials.accessTokenDetails`, so the portal access token — and a refresh
+// token, where the identity provider issues one — sits two levels down from a
+// profile and travelled to the model untouched, next to an STS triple that was
+// correctly redacted. Not added to SECRET_FIELDS: `accessToken` is also an ordinary
+// key in the response bodies and objects users ask the model to fetch, and this is
+// the ownership line again — a token SignBridge cached is its to redact, the same
+// field name in someone's JSON is not. Everything else in the container (expiry,
+// token type) stays, because "is this session still good?" is the question the
+// model is usually answering.
+const TOKEN_DETAILS_FIELD = 'accesstokendetails'
+const TOKEN_DETAILS_SECRETS = new Set(['accesstoken', 'refreshtoken', 'idtoken'])
+
 // Header names whose value is a credential, wherever a `headers` map appears
 // (stored history and favorite requests can carry one the user typed by hand).
 const SECRET_HEADERS = new Set([
@@ -188,6 +201,12 @@ export function scrubForModel(value, keyPath) {
       out[key] = val === null || val === undefined || val === '' ? val : REDACTED
     } else if (MASKED_FIELDS.has(lower)) {
       out[key] = val ? maskId(val) : val
+    } else if (lower === TOKEN_DETAILS_FIELD && val && typeof val === 'object' && !Array.isArray(val)) {
+      const details = {}
+      for (const [d, dv] of Object.entries(val)) {
+        details[d] = TOKEN_DETAILS_SECRETS.has(d.toLowerCase()) && dv ? REDACTED : dv
+      }
+      out[key] = details
     } else if (lower === 'headers' && val && typeof val === 'object' && !Array.isArray(val)) {
       const headers = {}
       for (const [h, hv] of Object.entries(val)) {
