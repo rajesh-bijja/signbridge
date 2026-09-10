@@ -147,6 +147,10 @@ export default function ChatPanel({
   const [modelChoice, setModelChoice] = useState(null)
   const modelChoiceRef = useRef(null)
   modelChoiceRef.current = modelChoice
+  // Reported by ModelPicker once it has loaded the LLM settings. Chat is the one
+  // feature that cannot work until the user supplies a provider API key of their
+  // own, so say that here instead of letting them type a question and get a 503.
+  const [llmStatus, setLlmStatus] = useState(null)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -471,7 +475,12 @@ export default function ChatPanel({
         <div className="d-flex align-items-center gap-2">
           {/* Which model is about to answer, changeable in place. Persists to
               Settings, so the choice made here is the choice everywhere. */}
-          <ModelPicker onChange={setModelChoice} disabled={loading} align="end" />
+          <ModelPicker
+            onChange={setModelChoice}
+            onStatus={setLlmStatus}
+            disabled={loading}
+            align="end"
+          />
           {showNewChat ? (
             <Button size="sm" variant="outline-secondary" onClick={onNewChat} disabled={loading}>
               New chat
@@ -523,6 +532,20 @@ export default function ChatPanel({
               </div>
             )}
           </div>
+        ) : null}
+
+        {llmStatus?.needsSetup && !error ? (
+          <Alert variant="warning" className="mb-2 py-2 small">
+            <strong>Chat needs an AI provider.</strong>{' '}
+            {llmStatus.message ||
+              'Pick a provider and add its API key to start chatting.'}{' '}
+            <Alert.Link as={Link} to="/settings">
+              Open Settings → AI features
+            </Alert.Link>
+            . SignBridge never ships a key of its own, and there is no environment
+            variable or config file that can supply one — the key is yours, and it
+            is stored encrypted on this machine.
+          </Alert>
         ) : null}
 
         {error ? (

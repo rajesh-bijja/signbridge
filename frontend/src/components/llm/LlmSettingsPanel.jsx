@@ -465,15 +465,12 @@ function LlmSettingsPanel() {
                 {notice}
               </Alert>
             )}
-            {/* The environment fallback is still supported, so say when it is what
-                is actually answering — otherwise "I selected Claude but it replies
-                as GPT" has no explanation on screen. */}
-            {active?.ok && active.source === 'env' && (
-              <Alert type="info">
-                The model in use ({active.model}) comes from the environment
-                (<code>LLM_API_KEY</code>). Connect a provider below to take over from it.
-              </Alert>
-            )}
+            {/* A provider key is the one thing the user must supply for chat to
+                work at all, and there is no environment variable or config file
+                that can supply it for them — so when nothing is configured, say
+                so here rather than letting the first chat turn fail with a 503
+                the user has to go looking for. resolveActive's message names the
+                exact next step. */}
             {!active?.ok && active?.message && <Alert type="warning">{active.message}</Alert>}
 
             <FormField

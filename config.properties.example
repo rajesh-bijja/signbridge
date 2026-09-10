@@ -155,12 +155,15 @@ reasoningEffort=
 temperature=0
 # Safety cap on the agent's tool-call loop (model->tool->model iterations per turn).
 maxToolIterations=8
-# NOTE: No API key is ever stored in this file, and there is no .env file to put
-# one in either. Keys are entered in Settings -> AI features, verified there, and
-# stored encrypted (AES-256-GCM) under ~/.signbridge. For an unattended deploy
-# that cannot use the Settings page (Kubernetes, systemd, CI), the environment
-# variable LLM_API_KEY is honoured as a last-resort fallback — a provider
-# configured in Settings always wins over it.
+# NOTE: No API key is ever stored in this file, there is no .env file to put one
+# in, and no environment variable can supply one either. A provider key is
+# entered in Settings -> AI features, verified there, and stored encrypted
+# (AES-256-GCM) under ~/.signbridge. That is the only path, deliberately: a key
+# in a file or an environment variable cannot be verified, masked or rotated by
+# the app, and it leaks into process listings, shell history and orchestrator
+# templates. With no provider configured, AI features report that and link to
+# Settings rather than falling back to a key nobody chose in the app.
+# `enabled` above is the operator switch and can only turn AI features off.
 
 [cursor]
 # Only used when the active AI provider is Cursor. Cursor sells an agent rather

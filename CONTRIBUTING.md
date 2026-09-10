@@ -73,11 +73,14 @@ Nothing is written inside the repo: all runtime state lives under
 
 - **Never commit secrets.** `keys/`, `.aws/`, `data/` and `config.properties`
   are gitignored — keep it that way. Only `config.properties.example` is tracked.
-- **No secret belongs in a config file or a doc.** LLM provider keys are entered
-  in the app (Settings → AI features) and stored sealed with AES-256-GCM under
-  `~/.signbridge`; `config.properties` has no `apiKey` field and must not grow
-  one. `LLM_API_KEY` in the environment is a last-resort fallback for unattended
-  deploys, not the configuration path.
+- **No secret belongs in a config file, an environment variable or a doc.** LLM
+  provider keys are entered in the app (Settings → AI features) and stored sealed
+  with AES-256-GCM under `~/.signbridge`. That is the *only* source:
+  `config.properties` has no `apiKey` field, and there is no environment fallback —
+  a key read from the environment cannot be verified, masked, rotated or attributed
+  to a provider by the app, and it leaks into process listings, shell history and
+  orchestrator templates. With nothing configured, the UI says so and links to
+  Settings; don't add a path that quietly supplies a key instead.
 - **Never log or persist AWS secret keys, session tokens or bearer tokens.**
   `lib/redact.js` is the one place that decides what must not reach a log line —
   wrap the payload (`redact.forLog`) rather than trimming the log.

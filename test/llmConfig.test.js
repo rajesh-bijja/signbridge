@@ -3,14 +3,14 @@
 // The pure decisions behind multi-provider LLM configuration.
 //
 // Every function here answers a question that used to have one hardcoded answer
-// (OpenAI, one key from .env). With twelve providers the answers differ per
-// provider, and each of these is a place where being subtly wrong produces a bad
-// experience rather than a crash:
+// (OpenAI, one key from the environment). With twelve providers the answers differ
+// per provider, and each of these is a place where being subtly wrong produces a
+// bad experience rather than a crash:
 //
-//   * `resolveActive` decides which provider/model/key a chat turn uses, and its
-//     env fallback is what keeps an existing .env-based deployment working after
-//     the upgrade. If that fallback broke, chat would stop for every current user
-//     the moment they pulled this change.
+//   * `resolveActive` decides which provider/model/key a chat turn uses, and the
+//     user's sealed settings are its only source. There is no environment key, so
+//     the tests below also assert the absence: a restored fallback would work
+//     silently, chatting with a key the user never entered in the app.
 //   * `describeHttpError` turns a provider's HTTP status into the sentence the
 //     user acts on. The 400-that-means-401 case is real (Google) and verified;
 //     without it, a bad key reads as "something about your request was wrong".
@@ -65,61 +65,80 @@ test('resolveActive: a fully configured provider resolves from settings', () => 
     assert.equal(active.baseUrl, providers.getProvider('openai').baseUrl);
 });
 
-test('resolveActive: settings win over a legacy environment key', () => {
-    // The point of the migration: once a provider is configured in the UI, the
-    // .env key stops being consulted. Otherwise a user who connected Anthropic
-    // would keep silently talking to whatever OpenAI key the operator left in the
-    // environment.
-    let active = llmSettings.resolveActive(settingsWith('openai'), {
-        LLM_API_KEY: 'sk-from-env',
-        LLM_MODEL: 'gpt-4o'
-    });
-    assert.equal(active.source, 'settings');
-    assert.equal(active.apiKey, 'sk-test-key-1234567890');
-    assert.equal(active.model, 'gpt-5.4-2026-03-05');
+test('resolveActive: settings are the only source — no environment key is consulted', () => {
+    // A provider key may live in exactly one place: the user's sealed settings.
+    // An environment variable cannot be verified, masked, rotated or attributed to
+    // a chosen provider, and it leaks into process listings and orchestrator
+    // templates — so LLM_API_KEY is not a supported way to configure SignBridge
+    // and resolveActive must not read one however it is presented.
+    //
+    // resolveActive takes no environment argument at all now, but a caller passing
+    // one (or the real process.env carrying these names) must change nothing.
+    let saved = {
+        LLM_API_KEY: process.env.LLM_API_KEY,
+        LLM_MODEL: process.env.LLM_MODEL,
+        LLM_BASE_URL: process.env.LLM_BASE_URL
+    };
+    process.env.LLM_API_KEY = 'sk-EXAMPLE-env-key-must-be-ignored';
+    process.env.LLM_MODEL = 'gpt-4o';
+    process.env.LLM_BASE_URL = 'https://gateway.internal/v1/';
+    try {
+        // Nothing configured: the environment must not rescue it.
+        let bare = llmSettings.resolveActive(llmSettings.emptySettings());
+        assert.equal(bare.ok, false, 'an env key must not make an unconfigured install chat');
+        assert.equal(bare.reason, 'not_configured');
+        assert.ok(!bare.apiKey, 'no key may be resolved from the environment');
+
+        // Passed explicitly as the old second argument: still ignored.
+        let ignoredArg = llmSettings.resolveActive(llmSettings.emptySettings(), {
+            LLM_API_KEY: 'sk-EXAMPLE-env-key-must-be-ignored'
+        });
+        assert.equal(ignoredArg.ok, false);
+        assert.equal(ignoredArg.reason, 'not_configured');
+
+        // Configured: the stored key and model win, and the env names are absent
+        // from the resolution entirely.
+        let active = llmSettings.resolveActive(settingsWith('openai'));
+        assert.equal(active.source, 'settings');
+        assert.equal(active.apiKey, 'sk-test-key-1234567890');
+        assert.equal(active.model, 'gpt-5.4-2026-03-05');
+        assert.equal(active.baseUrl, providers.getProvider('openai').baseUrl);
+    } finally {
+        for (let name of Object.keys(saved)) {
+            if (saved[name] === undefined) {
+                delete process.env[name];
+            } else {
+                process.env[name] = saved[name];
+            }
+        }
+    }
 });
 
-test('resolveActive: falls back to LLM_API_KEY so existing deployments keep working', () => {
-    let active = llmSettings.resolveActive(llmSettings.emptySettings(), {
-        LLM_API_KEY: 'sk-from-env',
-        LLM_MODEL: 'gpt-4o'
-    });
-    assert.equal(active.ok, true);
-    assert.equal(active.source, 'env');
-    assert.equal(active.providerId, 'openai');
-    assert.equal(active.apiKey, 'sk-from-env');
-    assert.equal(active.model, 'gpt-4o');
-});
-
-test('resolveActive: the env fallback never resolves without a model', () => {
-    // The regression this prevents, observed live: `llm.model` was dropped from
-    // config when the model moved into Settings, so an install carrying only
-    // LLM_API_KEY resolved ok:true with model:'' — and every provider answers an
-    // empty model with `400 you must provide a model parameter`. "Resolved
-    // successfully but cannot be used" is the worst of both outcomes; if the
-    // fallback claims ok, it has to be callable.
-    let active = llmSettings.resolveActive(llmSettings.emptySettings(), {
-        LLM_API_KEY: 'sk-from-env'
-    });
-    assert.equal(active.ok, true);
-    assert.equal(active.model, llmSettings.DEFAULT_ENV_MODEL);
-    assert.ok(active.model, 'the env fallback must carry a model of its own');
-    // And LLM_MODEL still wins when it is set.
-    assert.equal(
-        llmSettings.resolveActive(llmSettings.emptySettings(), {
-            LLM_API_KEY: 'sk-from-env', LLM_MODEL: 'gpt-4o'
-        }).model,
-        'gpt-4o'
-    );
-});
-
-test('resolveActive: an env base URL is honoured and has no trailing slash', () => {
-    // A trailing slash produces `…/v1//models` at some gateways, which 404s.
-    let active = llmSettings.resolveActive(llmSettings.emptySettings(), {
-        LLM_API_KEY: 'sk-from-env',
-        LLM_BASE_URL: 'https://gateway.internal/v1/'
-    });
-    assert.equal(active.baseUrl, 'https://gateway.internal/v1');
+test('the LLM_API_KEY fallback is gone from the source, not just unreachable', () => {
+    // The removal is the kind that a later "restore the fallback for unattended
+    // deploys" patch quietly undoes, and nothing would fail while it was wrong:
+    // chat would work, using a key the user never entered in the app, attributed
+    // to a provider they never picked. So assert on the source of the two modules
+    // that used to read it. Comments are stripped first — both files explain in
+    // prose *why* there is no environment key, and a naive scan would match the
+    // explanation.
+    let fs = require('fs');
+    let path = require('path');
+    let files = ['lib/llm/llmSettings.js', 'lib/chat/llmClient.js'];
+    for (let rel of files) {
+        let src = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+        let code = src
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+        assert.ok(
+            !/LLM_API_KEY|LLM_MODEL|LLM_BASE_URL/.test(code),
+            rel + ' must not read an LLM key/model/base URL from the environment'
+        );
+    }
+    // LLM_ENABLED is a different thing and stays: it is the operator master switch,
+    // it is not a secret, and it can only turn AI features *off*.
+    let clientSrc = fs.readFileSync(path.join(__dirname, '..', 'lib/chat/llmClient.js'), 'utf8');
+    assert.ok(/LLM_ENABLED/.test(clientSrc), 'the operator master switch must stay');
 });
 
 test('resolveActive: each way of being unconfigured has its own actionable reason', () => {
@@ -171,10 +190,9 @@ test('resolveActive: a provider with a chatBackend resolves, and says which one'
 
     // And the ordinary case stays falsy, so `if (active.chatBackend)` is a safe
     // dispatch for every other provider.
-    assert.ok(!llmSettings.resolveActive(settingsWith('openai'), {}).chatBackend);
-    assert.ok(!llmSettings.resolveActive(llmSettings.emptySettings(), {
-        LLM_API_KEY: 'sk-from-env'
-    }).chatBackend, 'the env fallback is always an OpenAI-compatible endpoint');
+    assert.ok(!llmSettings.resolveActive(settingsWith('openai')).chatBackend);
+    assert.ok(!llmSettings.resolveActive(llmSettings.emptySettings()).chatBackend,
+        'an unconfigured install dispatches to no backend at all');
 });
 
 // ------------------------------------------------- bedrock over an AWS profile
@@ -204,11 +222,11 @@ test('resolveActive: bedrock resolves with a profile and no key at all', () => {
     // The region has to arrive resolved: an empty one is a 404 that reads as
     // "model not available in your account".
     assert.ok(active.awsRegion, 'a region must always be resolved');
-    // No key, and specifically not the environment's key either — signing with a
-    // profile must not silently pick up LLM_API_KEY meant for another provider.
+    // No key at all on the profile path: a signing profile and an inference key
+    // are unrelated credentials, and resolving one as the other would mean
+    // spending model quota with a signing profile or presigning with an
+    // inference key.
     assert.equal(active.apiKey, '');
-    let withEnv = llmSettings.resolveActive(bedrockSettings(), { LLM_API_KEY: 'sk-someone-elses' });
-    assert.equal(withEnv.apiKey, '');
 });
 
 test('resolveActive: bedrock without a profile says so, rather than asking for a key', () => {
@@ -235,13 +253,10 @@ test('resolveActive: bedrock on the key path needs a key again', () => {
 test('resolveActive: the ok envelope carries the AWS fields for every provider', () => {
     // llmClient reads these unconditionally, so an OpenAI turn must not find them
     // undefined and a Bedrock turn must not have to guess.
-    let openai = llmSettings.resolveActive(settingsWith('openai'), {});
+    let openai = llmSettings.resolveActive(settingsWith('openai'));
     assert.equal(openai.credentialSource, 'api_key');
     assert.equal(openai.awsProfileName, '');
-    let env = llmSettings.resolveActive(llmSettings.emptySettings(), { LLM_API_KEY: 'sk-env' });
-    assert.equal(env.credentialSource, 'api_key',
-        'the env fallback is an API key by definition');
-    assert.equal(env.awsProfileName, '');
+    assert.equal(openai.awsAuthnMode, '');
 });
 
 test('toPublic exposes the profile choice, because the UI has to render it', () => {

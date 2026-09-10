@@ -217,9 +217,10 @@ cp config.properties.example config.properties   # local config (gitignored)
 ```
 
 That's the whole of it. The file works as-is with sensible defaults, and **it
-holds no API key** — there is deliberately no `.env` file either. The AI chat is
-configured in the running app — Settings → AI features — which encrypts the key
-it stores. See
+holds no API key** — there is deliberately no `.env` file either, and no
+environment variable that supplies one. If you want the AI chat, you connect a
+provider and add its key in the running app — Settings → AI features — which
+verifies the key and stores it encrypted. See
 [Bring your own LLM](#bring-your-own-llm--configured-in-the-app-not-in-a-file).
 
 ### 3. Run
@@ -242,9 +243,12 @@ self-signed certificate (expected for local HTTPS).
    `~/.aws`). Add IAM/SSO/REST profiles here too.
 3. **Presign or invoke** — pick a profile + auth mode, enter an endpoint, and
    click **Presign** (get a URL) or **Invoke** (get a live response).
-4. **(Optional) Chat** — go to **Settings → AI features**, enable it, connect a
-   provider and pick a model; then open the **Chat** page and ask *"list my
-   profiles"* or *"presign a GetObject for bucket X, valid 1 hour."*
+4. **(Optional) Chat** — needs an AI provider key of your own, which you add in
+   **Settings → AI features**: enable it, pick a provider, paste its key (or, for
+   AWS Bedrock, sign with an AWS profile you already have) and pick a model. Then
+   open the **Chat** page and ask *"list my profiles"* or *"presign a GetObject for
+   bucket X, valid 1 hour."* Open Chat before doing that and it tells you exactly
+   this, with a link to the page.
 
 **No login.** The app runs as a single local user (`signbridgeuser`) — there
 is no sign-in flow. See [User identity](#user-identity) to change the name.
@@ -396,8 +400,7 @@ there is no file for them.
 | --- | --- |
 | `BIND_HOST` | `server.bindHost` |
 | `LOG_LEVEL` | `logging.level` |
-| `LLM_ENABLED` | `llm.enabled` (the operator master switch) |
-| `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | An OpenAI key for a deploy with no way to reach the Settings page — read **only** when no provider is configured there |
+| `LLM_ENABLED` | `llm.enabled` (the operator master switch — it can only turn AI features off) |
 | `USER_NAME` | `auth.defaultUserName` |
 | `CURSOR_CLI_BIN` | `cursor.cliBin` |
 | `SANDBOX_IMAGE`, `SANDBOX_DOCKER_BIN` | `sandbox.image`, `sandbox.dockerBin` |
@@ -405,12 +408,13 @@ there is no file for them.
 | `TIMEOUT` | Outbound HTTP request timeout (ms) |
 | `SSO_CREDENTIAL_REFRESH_BUFFER_MS`, `EC2_CREDENTIAL_REFRESH_BUFFER_MS`, `IRSA_CREDENTIAL_REFRESH_BUFFER_MS` | How much life a cached temporary credential must have left to be reused (default 5 min) |
 
-**Nothing here asks you to put a secret in an environment variable.** Provider keys
-belong in **Settings → AI features**, which verifies the key and stores it
-encrypted under `~/.signbridge`; `docker-compose.yml` deliberately passes no
-api-key variable through. `LLM_API_KEY` exists only for a deployment that cannot
-reach that page at all (an unattended Kubernetes, systemd or CI install), it is
-OpenAI-only, and a provider configured in Settings always wins over it.
+**No variable here carries a secret, and there is no variable that can supply an AI
+provider key.** A provider key is entered in **Settings → AI features**, where
+SignBridge verifies it and stores it encrypted under `~/.signbridge`. That is the
+only path: a key in an environment variable cannot be verified, masked or rotated
+by the app, and it leaks into process listings, shell history and whatever
+orchestrator template set it. `LLM_ENABLED=false` turns AI features off; nothing
+turns them on without a key you added in the UI.
 
 `HTTPS_PORT` and `BIND_ADDRESS` are read by **Compose and `launchSignBridge`**, not
 by the app: they set the host side of the published port. The server always
@@ -622,8 +626,11 @@ the prompt.
 
 ### Bring your own LLM — configured in the app, not in a file
 
-**Chat is enabled by default** and needs one thing to run: a provider and a key.
-You set both in the UI, at runtime — there is no `.env` step and no restart.
+**SignBridge ships no AI key of its own, so Chat does nothing until you connect a
+provider.** There is no key in `config.properties`, no `.env`, and no environment
+variable that can supply one — the key is yours, you add it in the UI at runtime,
+and no restart is involved. Until you do, the Chat page says so and links straight
+to the page that fixes it, so you never have to guess why a turn failed.
 
 Open **Settings → AI features** and turn on **Enable LLM**:
 
@@ -645,23 +652,29 @@ re-entering a key. Whichever provider you verified last is the one Chat uses, an
 the confirmation says so in as many words (*"Chat now uses Anthropic (Claude)
 instead of OpenAI, whose key stays saved"*), so the handover is never silent.
 
-**Claude in your own AWS account.** The **AWS Bedrock (Claude)** provider talks to
-`bedrock-runtime.<region>.amazonaws.com/openai/v1` with a Bedrock API key, so
-prompts stay inside your AWS boundary and usage is billed to AWS rather than to
-Anthropic directly. Generate a long-term key under **API keys** in the Bedrock
-console (short-term keys expire after 12 hours), set the region in the base URL to
-one where you have enabled the Claude models you want, and paste the key. The model
-list is whatever that key can actually reach in that region, so a model you have
-not requested access to simply won't appear. This key is unrelated to your signing
-profiles — IAM/SSO/EC2/IRSA profiles sign the AWS calls SignBridge makes *for* you;
-this one only buys inference.
+**Claude in your own AWS account — and this is the one provider that needs no key
+at all.** The **AWS Bedrock (Claude)** provider reaches Claude through Bedrock's
+native **Converse** API (`bedrock-runtime.<region>.amazonaws.com`), so prompts stay
+inside your AWS boundary and usage is billed to AWS rather than to Anthropic
+directly. Because that call is a signed AWS request, SignBridge can sign it with a
+profile you already have here — IAM user, SSO role, EC2 instance role or EKS IRSA
+service account — which is the default: pick Bedrock, leave the credential source
+on **Sign with an AWS profile**, choose the profile, set the region where your
+Claude models are enabled, and press **Save & test**. The role needs
+`bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`;
+`bedrock:ListFoundationModels` is optional — without it the picker offers a short
+list of current Claude models and you can type any other model id you have access
+to, which is then remembered. A Bedrock API key is the alternative if you have one.
+The two are unrelated credentials and the choice is explicit for that reason:
+IAM/SSO/EC2/IRSA profiles sign the AWS calls SignBridge makes *for* you, while a
+Bedrock API key only buys inference.
 
 <details>
 <summary><b>Cursor works differently — it runs the Cursor agent locally</b></summary>
 
 Cursor sells an **agent**, not model access: there is no chat-completions endpoint
 a Cursor key can answer on. So SignBridge takes the other route — it is itself an
-MCP server exposing all 52 dashboard tools, and Cursor's agent consumes MCP. Pick
+MCP server exposing all 58 dashboard tools, and Cursor's agent consumes MCP. Pick
 Cursor as your provider and a chat turn runs the **Cursor agent CLI on this
 machine**, handed SignBridge's own tools, driving the same API the dashboard uses.
 

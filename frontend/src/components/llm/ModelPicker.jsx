@@ -19,7 +19,7 @@ import { filterModels, formatContextLength, formatModelPricing } from '../../llm
  * nothing is set up it says so and links to Settings, rather than growing a second
  * half-copy of that page.
  */
-function ModelPicker({ onChange, disabled = false, size = 'sm', align = 'start' }) {
+function ModelPicker({ onChange, onStatus, disabled = false, size = 'sm', align = 'start' }) {
   const [loading, setLoading] = useState(true)
   const [settings, setSettings] = useState(null)
   const [providers, setProviders] = useState([])
@@ -61,6 +61,24 @@ function ModelPicker({ onChange, disabled = false, size = 'sm', align = 'start' 
     if (!onChangeRef.current) return
     onChangeRef.current(active?.ok ? { providerId: active.providerId, model: active.model } : null)
   }, [active])
+
+  // Separately, report *why* there is no selection, so the caller can say so
+  // before the user types rather than after a turn fails. A provider key is the
+  // one thing the user must supply themselves — there is no environment variable
+  // or config file that can supply it for them — so "nothing is configured" is
+  // worth stating up front. Gated on `loading` so a slow settings fetch does not
+  // flash a warning at someone who is fully set up.
+  const onStatusRef = useRef(onStatus)
+  onStatusRef.current = onStatus
+  useEffect(() => {
+    if (!onStatusRef.current || loading) return
+    onStatusRef.current({
+      ok: !!active?.ok,
+      needsSetup: !active?.ok,
+      reason: active?.reason || null,
+      message: active?.message || ''
+    })
+  }, [active, loading])
 
   // Only providers that can actually answer: a verified key, and not a row that
   // declares it does no inference. A provider answered by a local backend (Cursor)
@@ -177,12 +195,7 @@ function ModelPicker({ onChange, disabled = false, size = 'sm', align = 'start' 
         variant="outline-secondary"
         size={size}
         disabled={disabled}
-        title={
-          credentialNote ||
-          (active?.source === 'env'
-            ? 'This model comes from the environment. Connect a provider in Settings to change it.'
-            : 'Change the provider or model')
-        }
+        title={credentialNote || 'Change the provider or model'}
       >
         {busy ? <Spinner animation="border" size="sm" className="me-1" /> : null}
         {label}
