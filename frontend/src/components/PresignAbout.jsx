@@ -15,6 +15,7 @@ import {
   caveats,
   legend,
 } from "../data/comparison.mjs";
+import { TAGLINE } from "../appConfig";
 
 // Renders a legend value ("yes" | "no" | "partial") as a colored badge/glyph.
 function Mark({ value }) {
@@ -54,7 +55,7 @@ export default function PresignAbout() {
     <SpaceBetween size="l">
       <Container
         header={
-          <Header variant="h1" description="Presign URLs. Invoke APIs. Bridge IAM & SSO roles.">
+          <Header variant="h1" description={TAGLINE}>
             About SignBridge
           </Header>
         }

@@ -2,7 +2,7 @@ import React, { Suspense, lazy, useEffect, useState } from 'react'
 import { BrowserRouter as Router, Link, Navigate, Route, Routes } from 'react-router-dom'
 import { Container, Nav, Navbar } from 'react-bootstrap'
 
-import { appPath } from './appConfig'
+import { appPath, TAGLINE } from './appConfig'
 import { getSession, setCachedUsername } from './session'
 
 // Route components are code-split: each page's JS (and its heavy deps such as
@@ -87,6 +87,7 @@ function AppShell({ session, children }) {
             />
             SignBridge
           </Navbar.Brand>
+          <span className="navbar-tagline d-none d-xl-inline">{TAGLINE}</span>
           <Navbar.Toggle aria-controls="presign-nav" />
           <Navbar.Collapse id="presign-nav">
             <Nav className="me-auto">
@@ -103,7 +104,7 @@ function AppShell({ session, children }) {
               ))}
             </Nav>
             <Navbar.Text className="text-light">
-              {session.displayName} ({session.userName})
+              {session.displayName}
             </Navbar.Text>
           </Navbar.Collapse>
         </Container>
