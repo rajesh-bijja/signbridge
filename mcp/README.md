@@ -16,7 +16,7 @@ credentials never leave that process.
 A running SignBridge — see the [main README](../README.md):
 
 ```bash
-docker compose up --build -d      # or: ./launchSignBridge start
+docker compose up --build -d
 ```
 
 That is all. **No AI provider API key is needed for any tool here.** The key you

@@ -317,12 +317,6 @@ test('the shipped deployment publishes to loopback and binds all interfaces insi
     assert.match(compose, /\$\{BIND_ADDRESS:-127\.0\.0\.1\}:\$\{HTTPS_PORT:-2443\}:2443/,
         'compose must publish to 127.0.0.1 by default, not to 0.0.0.0 (a bare "2443:2443")');
     assert.match(compose, /BIND_HOST:\s*0\.0\.0\.0/);
-
-    const launcher = read('launchSignBridge');
-    assert.match(launcher, /BIND_ADDRESS="\$\{BIND_ADDRESS:-127\.0\.0\.1\}"/);
-    assert.match(launcher, /--publish \$\{BIND_ADDRESS\}:\$\{HTTPS_PORT_EXT\}:\$\{HTTPS_PORT_INT\}/,
-        'the launcher must publish to $BIND_ADDRESS; `docker run -p 2443:2443` binds 0.0.0.0');
-    assert.match(launcher, /-e BIND_HOST=0\.0\.0\.0/);
 });
 
 test('the shipped deployment does not switch off TLS verification process-wide', function () {

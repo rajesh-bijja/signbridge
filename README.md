@@ -46,9 +46,6 @@ That's the whole install. Specifically, there is nothing to do about:
 
 Then: pick a profile → paste an endpoint → **Presign** or **Invoke**.
 
-> Prefer a helper script? `./launchSignBridge start` builds the image and wires the
-> mounts for you; `stop` / `delete` manage its lifecycle.
-
 ## 🧩 Use it from your IDE — MCP, two ways
 
 SignBridge exposes **58 tools** — full dashboard parity — to Claude, Cursor and
@@ -154,11 +151,23 @@ empty ones. See [S3 World](#s3-world) for the full format list and search syntax
 
 ### Chat — say it in English, it drives the same actions
 
-`/signbridge/chat` is a tool-calling agent wired to the *same* 58 actions as the
-dashboard and the MCP server, over your own LLM key: *"presign a DescribeInstances
-call with my preprod profile"*, *"what's in the newest parquet under s3://logs/2026/"*.
-Bring any of 12 providers — including AWS Bedrock signed with a profile you already
-have, so Claude needs no new key. See [AI Chat](#ai-chat).
+![SignBridge Chat: a session list on the left, and an answer to "Show my last 3 requests and their status" rendered as a table of method, profile, auth mechanism, time and status](assets/screenshots/chat.png)
+
+*A tool-calling agent wired to the **same** 58 actions as the dashboard and the MCP
+server: "presign a DescribeInstances call for an hour", "re-invoke my last request and
+tell me what failed", "what's in the newest parquet under `s3://logs/2026/`". It asks
+which profile to use rather than guessing, and every session is saved — right-click to
+rename, summarize or delete. See [AI Chat](#ai-chat).*
+
+### Your key, your provider — set up in the app, no file to edit
+
+![SignBridge Settings, AI features: 12 provider tiles with OpenAI selected and Verified, and a key card offering Test the stored key or Remove key](assets/screenshots/ai-provider.png)
+
+*Twelve providers. Paste a key in **Settings → AI features** and SignBridge verifies it,
+then lists the models that key can actually reach. Stored encrypted (AES-256-GCM) on
+your machine — there is no config file and no environment variable that can supply a
+key instead. **AWS Bedrock needs no key at all**: sign with an AWS profile you already
+have here. See [Bring your own LLM](#bring-your-own-llm).*
 
 ### Share what you're looking at — a link that expires
 
@@ -581,9 +590,8 @@ and a few GB once. To rebuild it on its own — say, to pin the Java SDK version
 > `docker-compose.yml` bind-mounts `/var/run/docker.sock` and sets
 > `SANDBOX_HOST_BASE_DIR` for you. **Mounting that socket is a privileged grant** —
 > equivalent to root on the host — and Sandbox is the only feature that needs it. To
-> run without it, delete the `docker.sock` volume line (or start with
-> `SIGNBRIDGE_SANDBOX=0 ./launchSignBridge -o start`). Everything else keeps
-> working; the Sandbox page reports Docker as unavailable.
+> run without it, delete the `docker.sock` volume line from `docker-compose.yml`.
+> Everything else keeps working; the Sandbox page reports Docker as unavailable.
 
 Limits live in `[sandbox]` in `config.properties` (timeout, memory, CPU, PID and
 output caps, concurrent runs, saved-script count).
@@ -892,9 +900,9 @@ settings would be a value you cannot change from the page that claims to own it,
 a key in the environment cannot be verified, masked or rotated by the app while it
 leaks into process listings and shell history.
 
-`HTTPS_PORT` and `BIND_ADDRESS` are read by **Compose and `launchSignBridge`**, not
-by the app: they set the host side of the published port. The server always listens
-on `server.PORT` inside the container.
+`HTTPS_PORT` and `BIND_ADDRESS` are read by **Compose**, not by the app: they set the
+host side of the published port. The server always listens on `server.PORT` inside
+the container.
 
 `SIGNBRIDGE_API_BASE` and `SIGNBRIDGE_USER` belong to the **stdio MCP client's**
 process, not to the server.

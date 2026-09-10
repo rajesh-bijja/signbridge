@@ -40,7 +40,7 @@ const USAGE = `signbridge-mcp ${VERSION} — MCP stdio server for SignBridge
 
 Speaks MCP over stdin/stdout, so it is normally launched by an AI client rather
 than by hand. It is a client of a running SignBridge instance; start that first
-(docker compose up -d, or ./launchSignBridge start).
+(docker compose up -d).
 
 Environment:
   SIGNBRIDGE_API_BASE   SignBridge API base URL
@@ -87,7 +87,7 @@ function describeTransportError(err) {
     return null
   }
   return `Cannot reach SignBridge at ${API_BASE} (${err.code}). Start SignBridge`
-    + ' (docker compose up -d, or ./launchSignBridge start), or set'
+    + ' (docker compose up -d), or set'
     + ' SIGNBRIDGE_API_BASE if it is listening elsewhere. This is a connection'
     + ' failure, not a rejected request — no credentials or permissions are involved.'
 }
