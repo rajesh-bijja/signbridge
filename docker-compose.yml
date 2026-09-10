@@ -54,6 +54,12 @@ services:
       # Set BIND_ADDRESS to expose it deliberately (and read [server] allowedHosts
       # in config.properties before you do).
       - "${BIND_ADDRESS:-127.0.0.1}:${HTTPS_PORT:-2443}:2443"
+      # The MCP endpoint, without TLS, for MCP clients that reject a self-signed
+      # certificate (Cursor and most others use Node's fetch, which does, with no
+      # per-server way to trust one). Serves nothing but /signbridge/mcp, and it is
+      # published to 127.0.0.1 for the same reason as the port above. Set
+      # [server] mcpHttpPort=0 in config.properties to turn it off.
+      - "${BIND_ADDRESS:-127.0.0.1}:${MCP_HTTP_PORT:-2444}:2444"
     environment:
       NODE_ENV: development
       # NODE_TLS_REJECT_UNAUTHORIZED is deliberately absent. It was "0" so the app

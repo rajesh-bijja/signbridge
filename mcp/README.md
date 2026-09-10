@@ -63,7 +63,12 @@ Or from the GitHub repository without cloning (note the `::path:` separator —
 ### If you prefer one process
 
 SignBridge also serves MCP over Streamable HTTP from the app itself, at
-`https://localhost:2443/signbridge/mcp` — same tools, nothing extra to launch.
+`http://localhost:2444/signbridge/mcp` — same tools, nothing extra to launch. That
+port has no TLS and listens on loopback only, because MCP clients connect with
+Node's `fetch`, which rejects SignBridge's self-signed certificate and says only
+`fetch failed`. (`https://localhost:2443/signbridge/mcp` serves the same endpoint
+for a client that can trust the cert.)
+
 Use this stdio package for clients that only spawn local commands.
 
 ## Checking it works

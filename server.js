@@ -17,6 +17,7 @@ try {
     let certUtils = require('./lib/certUtils');
     let coreUtils = require('./lib/coreUtils');
     let https = require('https');
+    let http = require('http');
     const { constants } = require('crypto');
     let applicationRoot = __dirname;
     let express = require('express');
@@ -324,6 +325,70 @@ try {
     server.listen(port, bindHost);
     server.on('error', onError);
     server.on('listening', onListening);
+
+    // A second listener, without TLS, serving nothing but {routeBase}/mcp.
+    //
+    // It exists because an MCP client that connects with Node's fetch (Cursor, and
+    // most others) rejects our self-signed certificate and reports only
+    // "fetch failed", with no per-server place to trust one — so the Streamable
+    // HTTP transport was advertised and unreachable. netGuard.describeMcpHttpPlan
+    // owns the decision and the wording, including the case where we refuse to
+    // start it because the bind would put cleartext MCP traffic on the network.
+    let mcpHttpPlan = netGuard.describeMcpHttpPlan({
+        port: netGuard.resolveMcpHttpPort(props, process.env),
+        bindHost: bindHost,
+        routeBase: routeBase,
+        container: netGuard.isContainer()
+    });
+    if (mcpHttpPlan.enabled) {
+        startMcpHttpListener(mcpHttpPlan);
+    } else {
+        log[mcpHttpPlan.level](mcpHttpPlan.message);
+    }
+
+    function startMcpHttpListener(plan) {
+        let mcpPath = routeBase + '/mcp';
+        let mcpApp = express();
+        mcpApp.enable('strict routing');
+        // Same Host allowlist and same headers as the main app: this port is a
+        // second front door to the same tools, so it gets the same guard.
+        mcpApp.use(function (req, res, next) {
+            if (!netGuard.isHostAllowed(req.headers.host, { allowedHosts: allowedHosts })) {
+                log.warn('MCP over HTTP: rejected request with unexpected Host header: ', String(req.headers.host));
+                return res.status(421).type('text/plain').send(
+                    'SignBridge does not answer for this host name. MCP over HTTP is at '
+                    + 'http://localhost:' + plan.port + mcpPath + '.');
+            }
+            Object.keys(baseSecurityHeaders).forEach(function (name) {
+                res.setHeader(name, baseSecurityHeaders[name]);
+            });
+            next();
+        });
+        mcpApp.use(express.json({ limit: '20mb' }));
+        mcpApp.post(mcpPath, routeToMcp);
+        mcpApp.get(mcpPath, routeToMcp);
+        mcpApp.delete(mcpPath, routeToMcp);
+        // Everything else 404s. Without TLS this must not become a second way to
+        // reach the dashboard, the signing API or the object proxy.
+        mcpApp.use(function (req, res) {
+            res.status(404).json({
+                message: 'This port serves only ' + mcpPath + '. SignBridge itself is at https://localhost:'
+                    + port + dashboardPath
+            });
+        });
+
+        let mcpHttpServer = http.createServer(mcpApp);
+        // Never fatal, unlike the main listener: SignBridge works without this port
+        // (the stdio transport is unaffected), so a port clash is a warning naming
+        // the port, not an exit.
+        mcpHttpServer.on('error', function (mcpErr) {
+            log.warn('MCP over HTTP not started on port ' + plan.port + ': ' + mcpErr.message
+                + '. Set [server] mcpHttpPort to a free port, or 0 to turn it off.');
+        });
+        mcpHttpServer.listen(plan.port, plan.bindHost, function () {
+            log.info(plan.message);
+        });
+    }
 
     function normalizePort(val) {
         let parsed = parseInt(val, 10);

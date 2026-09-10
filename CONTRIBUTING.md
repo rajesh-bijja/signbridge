@@ -30,7 +30,7 @@ Run the backend (requires `frontend/dist` to exist — build it with
 `cd frontend && npm run build`):
 
 ```bash
-npm start                  # binds 127.0.0.1:2443
+npm start                  # binds 127.0.0.1:2443, plus MCP without TLS on 2444
 LOG_LEVEL=debug npm start   # full signing trace, hundreds of lines per request
 ```
 

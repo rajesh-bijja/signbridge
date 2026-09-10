@@ -81,7 +81,7 @@ Mind the `::path:` separator — `#main:mcp` looks plausible and is a *different
 spec: npm reads it as the repository root, which has no `signbridge-mcp` bin, and
 the client only reports that it could not determine an executable.
 
-### b) Streamable HTTP — already running on port 2443
+### b) Streamable HTTP — already running on port 2444
 
 The server mounts MCP in-process, so there is no second thing to start:
 
@@ -89,7 +89,7 @@ The server mounts MCP in-process, so there is no second thing to start:
 {
   "mcpServers": {
     "signbridge": {
-      "url": "https://localhost:2443/signbridge/mcp"
+      "url": "http://localhost:2444/signbridge/mcp"
     }
   }
 }
@@ -97,6 +97,14 @@ The server mounts MCP in-process, so there is no second thing to start:
 
 Some clients name that key `serverUrl` or want `"type": "http"` alongside it — check
 yours. Either way the URL is the only value you supply.
+
+**Use port 2444, not 2443.** MCP clients connect with Node's `fetch`, which rejects
+SignBridge's self-signed certificate and reports only `fetch failed` — and there is
+nowhere in those clients to trust one certificate. So SignBridge also serves the MCP
+endpoint, and nothing else, on 2444 without TLS. It listens on loopback only, so
+those bytes never leave your machine; `https://localhost:2443/signbridge/mcp` still
+works for a client that can trust the cert. Set `[server] mcpHttpPort=0` to turn
+2444 off and use stdio instead.
 
 See [MCP reference](#mcp-reference) for the tool list, the optional environment
 overrides, and what is deliberately *not* a tool.
@@ -827,7 +835,7 @@ every section is commented in the file itself:
 
 | Section | What it holds |
 | --- | --- |
-| `[server]` | `PORT` (2443), `bindHost`, `allowedHosts`, and the *names* of the sub-directories under each user's artifacts dir |
+| `[server]` | `PORT` (2443), `mcpHttpPort` (2444, `0` = off), `bindHost`, `allowedHosts`, and the *names* of the sub-directories under each user's artifacts dir |
 | `[logging]` | `level` — `error` \| `warn` \| `info` \| `debug` |
 | `[ssl]` | The cert/key file names under `~/.signbridge/keys` |
 | `[auth]` | The single local user's name, display name and email |
@@ -951,7 +959,9 @@ delete the pair and restart, or run `./scripts/generate-certs.sh`.
 
 Docker is the supported way to run SignBridge — one container serves everything on
 HTTPS port 2443: the React UI, the REST API, the Socket.IO channel, **and** the MCP
-HTTP endpoint. (Working on SignBridge itself, from a checkout? That setup is in
+HTTP endpoint. The same MCP endpoint is repeated on port 2444 without TLS, for MCP
+clients that reject a self-signed certificate; both ports are loopback-only.
+(Working on SignBridge itself, from a checkout? That setup is in
 [CONTRIBUTING.md](CONTRIBUTING.md).) The **SignBridge** engine in `lib/` does the actual SigV4 signing; the AI
 chat agent and both MCP transports are alternative front-doors onto the *same* set
 of actions.
@@ -963,7 +973,7 @@ flowchart TB
         AItools["AI tools<br/>Claude · Cursor · Codex"]
     end
 
-    subgraph Server["SignBridge server — HTTPS :2443 /signbridge"]
+    subgraph Server["SignBridge server — HTTPS :2443 (MCP also on HTTP :2444) /signbridge"]
         direction TB
         REST["Express REST API<br/>+ Socket.IO (realtime)"]
         MCPH["MCP HTTP endpoint<br/>/mcp (in-process)"]

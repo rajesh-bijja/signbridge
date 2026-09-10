@@ -354,3 +354,108 @@ test('config.properties documents both knobs', function () {
     assert.match(example, /BIND_HOST/, 'the env override should be named');
     assert.match(example, /rebinding/i, 'allowedHosts should say what it defends against');
 });
+
+// --- The plain-HTTP MCP listener ----------------------------------------------
+//
+// SignBridge's certificate is self-signed, and MCP clients connect with Node's
+// fetch, which rejects it and reports only "fetch failed". There is no per-server
+// way to trust a certificate in those clients, and the only knob that would work
+// (NODE_TLS_REJECT_UNAUTHORIZED) is process-wide. So the Streamable HTTP transport
+// the README advertises was unreachable, and the fix is a second listener without
+// TLS that serves nothing else. Every assertion below is about "nothing else".
+
+test('resolveMcpHttpPort: default on, env over config, 0 turns it off', function () {
+    assert.strictEqual(netGuard.resolveMcpHttpPort(props({}), {}), 2444,
+        'on by default — the transport being advertised and unusable was the bug');
+    assert.strictEqual(netGuard.resolveMcpHttpPort(props({ 'server.mcpHttpPort': '9000' }), {}), 9000);
+    assert.strictEqual(
+        netGuard.resolveMcpHttpPort(props({ 'server.mcpHttpPort': '9000' }), { MCP_HTTP_PORT: '9100' }),
+        9100, 'the env override wins, as it does for BIND_HOST');
+    assert.strictEqual(netGuard.resolveMcpHttpPort(props({ 'server.mcpHttpPort': '0' }), {}), 0);
+    assert.strictEqual(netGuard.resolveMcpHttpPort(props({ 'server.mcpHttpPort': 'off' }), {}), 0,
+        'anything that is not a usable port reads as off, rather than binding NaN');
+    assert.strictEqual(netGuard.resolveMcpHttpPort(props({ 'server.mcpHttpPort': '70000' }), {}), 0);
+});
+
+test('the cleartext MCP listener starts only where it cannot reach the network', function () {
+    const onLoopback = netGuard.describeMcpHttpPlan({ port: 2444, bindHost: '127.0.0.1', routeBase: '/signbridge' });
+    assert.strictEqual(onLoopback.enabled, true);
+    assert.strictEqual(onLoopback.url, 'http://localhost:2444/signbridge/mcp',
+        'the message has to carry the exact URL to paste into an MCP client');
+    assert.strictEqual(onLoopback.level, 'info');
+
+    // In a container the process must bind 0.0.0.0 to be reachable through its
+    // published port at all, so that is not exposure — same reasoning as
+    // describeBindExposure, and getting it wrong here would disable the listener in
+    // the deployment nearly everyone uses.
+    assert.strictEqual(
+        netGuard.describeMcpHttpPlan({ port: 2444, bindHost: '0.0.0.0', container: true }).enabled,
+        true);
+
+    // The one case it refuses: a non-loopback bind on a real host would put MCP
+    // traffic on the network in the clear, and tool results carry credentials.
+    const exposed = netGuard.describeMcpHttpPlan({ port: 2444, bindHost: '0.0.0.0' });
+    assert.strictEqual(exposed.enabled, false);
+    assert.strictEqual(exposed.level, 'warn');
+    assert.strictEqual(exposed.url, null);
+    assert.match(exposed.message, /stdio/, 'and it must name the transport that still works');
+
+    const off = netGuard.describeMcpHttpPlan({ port: 0, bindHost: '127.0.0.1' });
+    assert.strictEqual(off.enabled, false);
+    assert.strictEqual(off.level, 'info', 'switched off deliberately is not a warning');
+
+    [onLoopback, exposed, off].forEach(function (m) {
+        assert.ok(m.message.length < 260, 'keep it to one line: ' + m.message);
+    });
+});
+
+test('server.js serves the MCP endpoint over HTTP and nothing else', function () {
+    // Comment-stripped: this file explains its own rules in prose, so a naive regex
+    // would happily match the sentence describing the rule.
+    const source = read('server.js')
+        .split('\n')
+        .filter(function (line) { return !/^\s*(\/\/|\*|\/\*)/.test(line); })
+        .join('\n');
+
+    assert.match(source, /netGuard\.describeMcpHttpPlan\(/,
+        'netGuard owns whether this listener may start, so the decision is testable');
+    assert.match(source, /container:\s*netGuard\.isContainer\(\)/);
+    assert.match(source, /http\.createServer\(\s*mcpApp\s*\)/);
+    assert.match(source, /mcpHttpServer\.listen\(\s*plan\.port\s*,\s*plan\.bindHost/,
+        'it must reuse the resolved bind host: loopback inside a container is'
+        + ' unreachable through a published port');
+
+    // Only the MCP path, and a catch-all after it. Without TLS this must not become
+    // a second door to the dashboard, the signing routes or the S3 object proxy.
+    const routes = source.match(/mcpApp\.(post|get|delete|use)\(/g) || [];
+    assert.deepStrictEqual(
+        (source.match(/mcpApp\.(?:post|get|delete)\(([^,]+),/g) || []).map(function (m) {
+            return m.replace(/mcpApp\.(?:post|get|delete)\(/, '').replace(/,$/, '').trim();
+        }),
+        ['mcpPath', 'mcpPath', 'mcpPath'],
+        'the cleartext listener may route only mcpPath');
+    assert.ok(routes.length >= 5, 'three methods, the guard, and the 404 catch-all');
+    assert.match(source, /res\.status\(404\)/, 'every other path must 404');
+
+    // The same Host allowlist and the same headers as the main app.
+    const guardAt = source.indexOf('netGuard.isHostAllowed(req.headers.host, { allowedHosts: allowedHosts })', source.indexOf('function startMcpHttpListener'));
+    assert.ok(guardAt !== -1, 'the second front door needs the same DNS-rebinding guard');
+    assert.ok(guardAt < source.indexOf('mcpApp.post('), 'and it must be installed before the route');
+
+    // A port clash here must not kill SignBridge: the app works without this
+    // listener, and the stdio transport is unaffected.
+    const bodyFrom = source.indexOf('function startMcpHttpListener');
+    const bodyTo = source.indexOf('\n    function ', bodyFrom + 1);
+    assert.ok(bodyTo > bodyFrom, 'expected another top-level function after it');
+    const body = source.slice(bodyFrom, bodyTo);
+    assert.doesNotMatch(body, /process\.exit/,
+        'an unavailable MCP port is a warning naming the port, not an exit — unlike'
+        + ' the main listener, nothing depends on it');
+    assert.match(body, /log\.warn\(/);
+});
+
+test('compose publishes the MCP port to loopback too', function () {
+    assert.match(read('docker-compose.yml'), /\$\{BIND_ADDRESS:-127\.0\.0\.1\}:\$\{MCP_HTTP_PORT:-2444\}:2444/,
+        'cleartext MCP is only acceptable because it stays on this machine, so a bare'
+        + ' "2444:2444" would undo the reason it is allowed to exist');
+});

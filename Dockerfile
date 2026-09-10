@@ -113,6 +113,8 @@ RUN chmod +x docker-entrypoint.sh \
     && chown -R $APP_USR:$APP_GRP $APP_DIR $APP_HOME $CONFIG_PROFILES_DIR \
     && chmod -R 755 $APP_DIR $CONFIG_PROFILES_DIR
 
-EXPOSE 2443
+# 2443 is the app (HTTPS); 2444 serves only the MCP endpoint, without TLS, for MCP
+# clients that reject a self-signed certificate. See [server] mcpHttpPort.
+EXPOSE 2443 2444
 ENTRYPOINT ["/usr/src/app/docker-entrypoint.sh"]
 CMD ["npm", "start"]
