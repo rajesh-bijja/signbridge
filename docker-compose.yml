@@ -52,7 +52,7 @@ services:
       # hand an unauthenticated credential proxy to everyone on the same network
       # — a café or office LAN included — with nothing visible to indicate it.
       # Set BIND_ADDRESS to expose it deliberately (and read [server] allowedHosts
-      # in config.properties.example before you do).
+      # in config.properties before you do).
       - "${BIND_ADDRESS:-127.0.0.1}:${HTTPS_PORT:-2443}:2443"
     environment:
       NODE_ENV: development

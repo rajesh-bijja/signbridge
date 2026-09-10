@@ -15,11 +15,18 @@ logs/
 # Secrets & credentials — never commit
 .env
 .env.*
-# SignBridge has no .env-based configuration: operator knobs live in
-# config.properties (track the template, config.properties.example, not the real
-# file) and provider API keys are entered in Settings and stored encrypted under
-# ~/.signbridge. These patterns stay so a stray .env can never be committed.
-config.properties
+# SignBridge has no .env-based configuration: operator knobs live in the tracked
+# config.properties and provider API keys are entered in Settings and stored
+# encrypted under ~/.signbridge. These patterns stay so a stray .env can never be
+# committed.
+#
+# config.properties is deliberately NOT ignored: it holds no secret (there is no
+# key-shaped setting in it at all — test/secretHygiene.test.js enforces that), so
+# shipping the defaults means a fresh clone runs with no setup step. It used to be
+# ignored with a config.properties.example beside it, which cost a copy step
+# nobody should need and let the file people actually run drift, unreviewed, from
+# the template. Local tweaks show in `git status`; `git update-index
+# --skip-worktree config.properties` hides them if that is a nuisance.
 .aws/
 keys/
 *.pem

@@ -11,9 +11,10 @@ logs
 .env
 .env.*
 .aws
-# Don't bake a local config into the image; the image seeds one from
-# config.properties.example, and compose bind-mounts the real file at runtime.
-config.properties
+# config.properties is NOT excluded: it is tracked, holds no secret (no key-shaped
+# setting exists in it — see test/secretHygiene.test.js), and baking it is what
+# lets the image run standalone. Compose bind-mounts the host's copy over it so an
+# edit applies without a rebuild.
 *.pem
 *.key
 *.crt

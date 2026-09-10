@@ -109,11 +109,6 @@ COPY --from=frontend-build /frontend/dist ./frontend/dist
 # with zero tools — a failure with no visible cause.
 RUN cd mcp && npm ci --omit=dev
 
-# Seed a default config from the template (the real config.properties is
-# gitignored and .dockerignored). Compose bind-mounts the host's file over this
-# at runtime; the baked copy just lets the image run standalone.
-RUN [ -f config.properties ] || cp config.properties.example config.properties
-
 RUN chmod +x docker-entrypoint.sh \
     && chown -R $APP_USR:$APP_GRP $APP_DIR $APP_HOME $CONFIG_PROFILES_DIR \
     && chmod -R 755 $APP_DIR $CONFIG_PROFILES_DIR

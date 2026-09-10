@@ -381,9 +381,9 @@ test('server.js keeps exactly one deliberate console.*: the require-failed catch
     assert.match(source, /require\('\.\/lib\/logger'\)\.create\('server'\)/);
 });
 
-test('config.properties.example documents the [logging] level', () => {
+test('config.properties documents the [logging] level', () => {
     // The knob is only useful if a fresh clone can find it.
-    let example = fs.readFileSync(path.join(REPO_ROOT, 'config.properties.example'), 'utf8');
+    let example = fs.readFileSync(path.join(REPO_ROOT, 'config.properties'), 'utf8');
     assert.match(example, /^\[logging\]$/m);
     assert.match(example, /^level=info$/m);
     assert.match(example, /LOG_LEVEL/);

@@ -351,10 +351,10 @@ test('the shipped deployment does not switch off TLS verification process-wide',
     });
 });
 
-test('config.properties.example documents both knobs', function () {
+test('config.properties documents both knobs', function () {
     // These are the two settings an operator has to find in order to expose the
     // app deliberately. Undocumented, the discoverable workaround is 0.0.0.0.
-    const example = read('config.properties.example');
+    const example = read('config.properties');
     assert.match(example, /^bindHost=127\.0\.0\.1$/m);
     assert.match(example, /^allowedHosts=$/m);
     assert.match(example, /BIND_HOST/, 'the env override should be named');

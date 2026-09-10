@@ -3,8 +3,8 @@
 /**
  * secretHygiene.test.js — the guardrails for publishing this repo.
  *
- * This file used to check two files: it scanned `config.properties.example` for
- * three secret shapes and `README.md` for internal references. That is a spot
+ * This file used to check two files: it scanned the config template for three
+ * secret shapes and `README.md` for internal references. That is a spot
  * check, and the thing being guaranteed is repo-wide — "no config, secret or API
  * key is in the repo" is a statement about *every* file that would be committed,
  * including the one someone adds next week. So the scans below run over
@@ -15,10 +15,11 @@
  * Three kinds of assertion, in order:
  *
  *   1. **Nothing secret-bearing is committable** — .gitignore and .dockerignore
- *      exclude the paths that hold real credentials, and no `.env` or
- *      `config.properties` is tracked. .dockerignore matters as much as
+ *      exclude the paths that hold real credentials, and no `.env` is tracked.
+ *      `config.properties` *is* tracked, which is why one of these tests asserts
+ *      it has no key-shaped setting at all. .dockerignore matters as much as
  *      .gitignore: the Dockerfile is published too, and a build context carrying
- *      `keys/` or a real `config.properties` bakes them into an image layer.
+ *      `keys/` or a `.env` bakes them into an image layer.
  *
  *   2. **No credential-shaped string is committable** — every file is scanned for
  *      AWS key ids, provider key prefixes, PEM private-key blocks, JWTs and
@@ -112,7 +113,6 @@ test('.gitignore excludes every secret-bearing path', () => {
     const mustIgnore = [
         '.env',              // no .env is used, but a stray one must never land
         '.env.*',            // ...nor a variant of it
-        'config.properties', // the local runtime config
         '.aws/',             // mounted AWS credentials
         'keys/',             // TLS private key + the LLM wrapping key
         '*.pem',
@@ -132,10 +132,12 @@ test('.gitignore excludes every secret-bearing path', () => {
 
 test('.dockerignore keeps secrets and local state out of the build context', () => {
     // The published Dockerfile builds from this directory. A context that carries
-    // keys/ or a real config.properties bakes them into an image layer, which is
-    // a leak that no .gitignore prevents and that `docker history` exposes.
+    // keys/ or a .env bakes them into an image layer, which is a leak that no
+    // .gitignore prevents and that `docker history` exposes. config.properties is
+    // deliberately absent from this list — it is tracked and has no secret slot, so
+    // baking the defaults is what lets the image run with no setup.
     const entries = lines('.dockerignore');
-    ['keys', 'data', '.env', '.env.*', '.aws', 'config.properties', '*.pem', '*.key']
+    ['keys', 'data', '.env', '.env.*', '.aws', '*.pem', '*.key']
         .forEach(function (entry) {
             assert.ok(entries.includes(entry),
                 '.dockerignore must contain an exact line for "' + entry + '"');
@@ -158,14 +160,14 @@ test('no .env template is tracked, and .gitignore does not re-include one', () =
     );
 });
 
-test('only the .example templates are committable, never a real config', () => {
+test('no .env or key material is committable, and config.properties ships tracked', () => {
     const files = committableFiles();
     if (!files) {
         return;   // not a git checkout; nothing to commit
     }
     const forbidden = files.filter(function (f) {
         const base = path.basename(f);
-        if (base === 'config.properties' || base.startsWith('.env')) {
+        if (base.startsWith('.env')) {
             return true;
         }
         return /\.(pem|key|crt|p12|pfx)$/i.test(base);
@@ -173,22 +175,32 @@ test('only the .example templates are committable, never a real config', () => {
     assert.deepEqual(forbidden, [],
         'these hold real configuration or key material and must be gitignored: ' +
         forbidden.join(', '));
-    // The template that replaces them has to still be there, or a fresh clone has
-    // nothing to copy.
-    assert.ok(files.includes('config.properties.example'));
+    // config.properties is tracked *on purpose*, and that is the invariant here:
+    // it is the only config file, it holds no secret (asserted below), and shipping
+    // it with the defaults is what makes `docker compose up` on a fresh clone the
+    // whole of setup. It was gitignored with a config.properties.example beside it,
+    // which cost a copy step for no benefit and, since compose bind-mounts
+    // ./config.properties, punished forgetting it in a way nobody could read:
+    // Docker silently creates a *directory* of that name for a missing bind source,
+    // so the app failed on EISDIR and the later `cp` failed too.
+    assert.ok(files.includes('config.properties'),
+        'config.properties must be tracked — a fresh clone has to run with no setup step');
+    assert.ok(!fs.existsSync(path.join(repoRoot, 'config.properties.example')),
+        'do not reintroduce config.properties.example: two files means a copy step, and ' +
+        'the file people actually run drifts from the reviewed one');
 });
 
-test('config.properties.example ships no slot for a secret', () => {
-    // Not just "no secret in it" — no *key-shaped setting* at all, because a
-    // commented-out `apiKey=` is an instruction to put a live key in a file that
-    // people edit by hand and occasionally paste into an issue.
-    const example = read('config.properties.example');
-    lines('config.properties.example').forEach(function (line, i) {
+test('config.properties ships no slot for a secret', () => {
+    // This is what earns config.properties the right to be tracked. Not just "no
+    // secret in it" — no *key-shaped setting* at all, because a commented-out
+    // `apiKey=` is an instruction to put a live key in a file that is now committed.
+    const example = read('config.properties');
+    lines('config.properties').forEach(function (line, i) {
         if (line.trim().startsWith('#')) {
             return;   // prose may (and does) explain that keys live elsewhere
         }
         assert.ok(!/^\s*(apiKey|api_key|LLM_API_KEY|password|secret|token)\s*=/i.test(line),
-            'config.properties.example:' + (i + 1) + ' declares a secret setting: ' + line.trim());
+            'config.properties:' + (i + 1) + ' declares a secret setting: ' + line.trim());
     });
     // ...and there is no [llm] section at all any more. Every part of the LLM
     // configuration — the on/off switch, the provider, the credential, the model
@@ -198,12 +210,12 @@ test('config.properties.example ships no slot for a secret', () => {
     // specifically: while `enabled` lived here it was the value that actually
     // decided, and the toggle in the UI was decorative.
     assert.ok(!/^\s*\[llm\]/m.test(example),
-        'config.properties.example must not reintroduce an [llm] section — AI features are ' +
+        'config.properties must not reintroduce an [llm] section — AI features are ' +
         'configured in Settings, and a setting split between a file and a form is a setting ' +
         'where the form lies');
     ['provider', 'model', 'baseUrl', 'enabled', 'reasoningEffort', 'maxToolIterations'].forEach(function (key) {
         assert.ok(!new RegExp('^\\s*' + key + '\\s*=', 'm').test(example),
-            'config.properties.example must not reintroduce llm.' + key +
+            'config.properties must not reintroduce llm.' + key +
             ' — it is chosen in Settings and stored per user');
     });
 });

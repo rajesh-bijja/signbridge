@@ -210,24 +210,18 @@ locally, and your `~/.aws` profiles are picked up automatically.
 Nothing else to install. The Sandbox execution image is built for you as part of
 `docker compose up` — see [Sandbox mode](#sandbox-mode).
 
-### 2. Configure
-
-```bash
-cp config.properties.example config.properties   # local config (gitignored)
-```
-
-That's the whole of it. The file works as-is with sensible defaults, and **it
-holds no API key** — there is deliberately no `.env` file either, and no
-environment variable that supplies one. If you want the AI chat, you connect a
-provider and add its key in the running app — Settings → AI features — which
-verifies the key and stores it encrypted. See
-[Bring your own LLM](#bring-your-own-llm--configured-in-the-app-not-in-a-file).
-
-### 3. Run
+### 2. Run
 
 ```bash
 docker compose up --build -d
 ```
+
+**There is no configure step.** `config.properties` ships with working defaults —
+nothing to copy, nothing to fill in — and **it holds no API key**: there is no
+`.env` file either, and no environment variable that supplies one. If you want the
+AI chat, you connect a provider and add its key in the running app (Settings → AI
+features), which verifies it and stores it encrypted. See
+[Bring your own LLM](#bring-your-own-llm--configured-in-the-app-not-in-a-file).
 
 Then open **https://localhost:2443/signbridge/dashboard** and accept the
 self-signed certificate (expected for local HTTPS).
@@ -236,7 +230,7 @@ self-signed certificate (expected for local HTTPS).
 > the container, wiring up the `~/.aws` and `~/.signbridge` mounts for you.
 > `./launchSignBridge stop` / `delete` manage its lifecycle.
 
-### 4. First run checklist
+### 3. First run checklist
 
 1. **Dashboard loads** at `/signbridge/dashboard` — no login, you're in.
 2. **Your AWS profiles appear** on the **Profiles** page (auto-imported from
@@ -330,9 +324,9 @@ profiles and certs persist across container rebuilds.
 ## Configuration
 
 `config.properties` is the only config file, and **there is no `.env`** — no
-`dotenv` dependency, and nothing to copy but the one template. It is INI-style,
-read as `section.key`, and every section is commented in
-`config.properties.example`:
+`dotenv` dependency, and nothing to copy: it ships with working defaults and no
+slot for a secret, so a fresh clone runs as-is. It is INI-style, read as
+`section.key`, and every section is commented in the file itself:
 
 | Section | What it holds |
 | --- | --- |
@@ -1109,8 +1103,8 @@ neither a tool nor a written reason for not having one.
 ```
 signbridge/
 ├── server.js              # Express + HTTPS + Socket.IO + in-process MCP HTTP
-├── config.properties.example  # Template — copy to config.properties (gitignored).
-│                          #   The only config file: there is no .env.
+├── config.properties      # The only config file, tracked with working defaults —
+│                          #   nothing to copy, and there is no .env.
 ├── frontend/              # React UI (Vite + Bootstrap + Cloudscape)
 │   ├── src/data/          # comparison.mjs — the "How SignBridge compares" data,
 │   │                      #   single-sourced: the README block above is generated from it

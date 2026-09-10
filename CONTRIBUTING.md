@@ -9,9 +9,8 @@ get set up and the conventions to follow.
 required for Sandbox mode).
 
 ```bash
-# Local config (gitignored; the template is tracked). This is the only
-# config file — there is no .env, and no dotenv dependency.
-cp config.properties.example config.properties
+# No config step: config.properties is tracked, with working defaults. It is the
+# only config file — there is no .env, and no dotenv dependency.
 
 # Backend deps
 npm install
@@ -71,8 +70,11 @@ Nothing is written inside the repo: all runtime state lives under
 
 ## Security
 
-- **Never commit secrets.** `keys/`, `.aws/`, `data/` and `config.properties`
-  are gitignored — keep it that way. Only `config.properties.example` is tracked.
+- **Never commit secrets.** `keys/`, `.aws/`, `data/` and any `.env` are
+  gitignored — keep it that way. `config.properties` *is* tracked, which is the
+  reason it may never grow a key-shaped setting; if you add a knob that needs a
+  credential, it belongs in Settings, not there. Local edits to it show up in
+  `git status` — `git update-index --skip-worktree config.properties` hides yours.
 - **No secret belongs in a config file, an environment variable or a doc.** LLM
   provider keys are entered in the app (Settings → AI features) and stored sealed
   with AES-256-GCM under `~/.signbridge`. That is the *only* source:
