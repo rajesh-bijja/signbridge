@@ -56,7 +56,9 @@ export function createMcpHttpHandler(opts) {
   }
 
   function buildServer() {
-    const server = new McpServer({ name: 'signbridge-signbridge', version: '1.0.0' })
+    // Same name the stdio server reports (mcp/server.js) — it is what a client
+    // displays, and two spellings of one server read as two servers.
+    const server = new McpServer({ name: 'signbridge', version: '1.0.0' })
     registerTools(server, { callApi, userName })
     return server
   }
