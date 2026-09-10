@@ -1,6 +1,6 @@
 # SignBridge — Agent Guide
 
-Guidance for AI coding agents (Claude Code, Cursor, Codex, or any other) working in this repository. These instructions describe **SignBridge** specifically. Named `AGENTS.md` on purpose: the file is the repo's guide, not one vendor's.
+Guidance for AI coding agents (Claude Code, Cursor, Codex, or any other) working in this repository. These instructions describe **SignBridge** specifically. Named `AGENTS.md` on purpose: the file is the repo's guide, not one vendor's. `CLAUDE.md` is a **symlink to this file** for Claude Code, which looks for that name — edit this one, and never replace the symlink with a copy that can drift.
 
 ## What this project is
 

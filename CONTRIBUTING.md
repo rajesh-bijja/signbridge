@@ -41,8 +41,9 @@ Nothing is written inside the repo: all runtime state lives under
 
 `AGENTS.md` is the long-form guide to this codebase — architecture, module
 responsibilities, and the reasoning behind the decisions that look odd. AI coding
-agents pick it up automatically; it is worth reading yourself before a larger
-change. The conventions below are the short version.
+agents pick it up automatically (`CLAUDE.md` is a symlink to it, for the ones that
+look for that name); it is worth reading yourself before a larger change. The
+conventions below are the short version.
 
 - **Backend `lib/` is CommonJS** (`require` / `module.exports`, `"use strict"`).
   **Frontend and `mcp/` are ESM** (`import`). Match the file you're editing.

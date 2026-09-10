@@ -56,13 +56,23 @@ Straight from a clone, without npm:
 Or from the GitHub repository without cloning:
 
 ```json
-{ "command": "npx", "args": ["-y", "github:rajesh-bijja/signbridge"] }
+{
+  "mcpServers": {
+    "signbridge": {
+      "command": "npx",
+      "args": ["-y", "github:rajesh-bijja/signbridge"]
+    }
+  }
+}
 ```
 
 No subdirectory suffix: npm cannot install one directory of a repository, and
 accepts `#main::path:mcp` while quietly installing the root anyway. So the root
 declares this same bin. It does mean a git install builds the whole backend's
 dependencies instead of the four used here.
+
+Register **one** of these forms — two entries give your client two copies of
+every tool.
 
 ### If you prefer one process
 

@@ -58,6 +58,28 @@ nothing set up in Settings.
 
 ### a) stdio — Claude Desktop / Cursor / Codex
 
+Nothing to install or clone. Straight from this repository:
+
+```json
+{
+  "mcpServers": {
+    "signbridge": {
+      "command": "npx",
+      "args": ["-y", "github:rajesh-bijja/signbridge"]
+    }
+  }
+}
+```
+
+That is the whole config: it defaults to the local SignBridge and its local user.
+`npx` clones once and caches, so the first start takes a minute and later ones do
+not. **No subdirectory suffix** — npm cannot install one directory of a repository,
+and accepts `#main::path:mcp` while installing the root anyway, so the root declares
+the executable and the bare spec is what to write.
+
+From npm instead, once the package is published — smaller, four dependencies rather
+than the whole backend's:
+
 ```json
 {
   "mcpServers": {
@@ -69,20 +91,21 @@ nothing set up in Settings.
 }
 ```
 
-That is the whole config — `npx` fetches the package and caches it, and it defaults
-to the local SignBridge and its local user. Straight from GitHub instead of npm, no
-clone, swap the args for:
+Or from a clone, with no download at all:
 
 ```json
-"args": ["-y", "github:rajesh-bijja/signbridge"]
+{
+  "mcpServers": {
+    "signbridge": {
+      "command": "node",
+      "args": ["/absolute/path/to/signbridge/mcp/server.js"]
+    }
+  }
+}
 ```
 
-No subdirectory suffix: **npm cannot install one directory of a repository.** It
-accepts `#main::path:mcp` and `#main:mcp` without complaint and installs the
-repository root either way, so the `signbridge-mcp` bin is declared at the root
-too and this spec resolves. The cost is that a git install builds the whole
-backend's dependencies rather than the four the stdio server needs — fine for a
-one-off, which is why `npx signbridge-mcp` stays the recommended form.
+All three run the same server and expose the same 58 tools. Register **one** — two
+entries give your client two copies of every tool.
 
 ### b) Streamable HTTP — already running on port 2444
 
