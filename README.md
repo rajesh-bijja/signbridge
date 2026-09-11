@@ -21,6 +21,12 @@
   sheets, gzipped logs as text. All 58 tools are available to your IDE over MCP.
 </p>
 
+<p align="center">
+  <a href="https://www.npmjs.com/package/signbridge-mcp"><img src="https://img.shields.io/npm/v/signbridge-mcp?label=signbridge-mcp&color=cb3837" alt="signbridge-mcp on npm" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT licensed" /></a>
+  <img src="https://img.shields.io/badge/node-%E2%89%A520-5fa04e" alt="Node 20 or newer" />
+</p>
+
 ---
 
 ## ⚡ Up and running in 60 seconds
@@ -59,7 +65,24 @@ nothing set up in Settings.
 
 ### a) stdio — Claude Desktop / Cursor / Codex
 
-Nothing to install or clone. Straight from this repository:
+Nothing to install or clone. From npm:
+
+```json
+{
+  "mcpServers": {
+    "signbridge": {
+      "command": "npx",
+      "args": ["-y", "signbridge-mcp"]
+    }
+  }
+}
+```
+
+That is the whole config: it defaults to the local SignBridge and its local user.
+The package is [`signbridge-mcp`](https://www.npmjs.com/package/signbridge-mcp) —
+24 kB and four dependencies, not the whole backend's.
+
+Straight from this repository works too, if you would rather not go through npm:
 
 ```json
 {
@@ -72,25 +95,10 @@ Nothing to install or clone. Straight from this repository:
 }
 ```
 
-That is the whole config: it defaults to the local SignBridge and its local user.
-`npx` clones once and caches, so the first start takes a minute and later ones do
-not. **No subdirectory suffix** — npm cannot install one directory of a repository,
-and accepts `#main::path:mcp` while installing the root anyway, so the root declares
-the executable and the bare spec is what to write.
-
-From npm instead, once the package is published — smaller, four dependencies rather
-than the whole backend's:
-
-```json
-{
-  "mcpServers": {
-    "signbridge": {
-      "command": "npx",
-      "args": ["-y", "signbridge-mcp"]
-    }
-  }
-}
-```
+That clones the repo, so the first start takes a minute; `npx` caches it after
+that. **No subdirectory suffix** — npm cannot install one directory of a
+repository, and accepts `#main::path:mcp` while installing the root anyway, so
+the root declares the executable and the bare spec is what to write.
 
 Or from a clone, with no download at all:
 
