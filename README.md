@@ -1166,6 +1166,13 @@ is no behaviour to assert on. If you add a check of that kind, **strip comments
 first**: these modules document their own rules in prose, and a naive regex matches
 the sentence describing the rule.
 
+## Security
+
+SignBridge is a **local developer tool** — it has no login, and anyone who can
+reach its port on your machine can use your AWS profiles. The safe default is
+loopback only. See [SECURITY.md](SECURITY.md) for the threat model, MCP notes,
+and how to report issues.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
