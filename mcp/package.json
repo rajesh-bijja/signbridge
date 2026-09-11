@@ -26,6 +26,10 @@
   "bugs": {
     "url": "https://github.com/rajesh-bijja/signbridge/issues"
   },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "keywords": [
     "mcp",
     "model-context-protocol",
