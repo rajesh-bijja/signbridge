@@ -14,10 +14,11 @@
 
 <p align="center">
   <b>Postman for AWS SigV4 — self-hosted.</b><br/>
-  Presign any AWS API, invoke it live, browse S3 and look <i>inside</i> the objects,
-  run boto3 in a sandbox, and hand the whole thing to your IDE over MCP.<br/>
-  Signs with your IAM keys, your SSO roles, a remote EC2 instance role, or an EKS IRSA
-  service account.
+  Sign as any identity you can reach: your IAM keys, an SSO role, a remote EC2
+  instance's own role, an EKS IRSA service account. Then presign the request, invoke
+  it live, or write boto3 against the same profile in a throwaway sandbox.<br/>
+  Browse S3 and read what is <i>inside</i> an object — parquet as a table, spreadsheet
+  sheets, gzipped logs as text. All 58 tools are available to your IDE over MCP.
 </p>
 
 ---
