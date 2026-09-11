@@ -112,15 +112,106 @@ test('docker-entrypoint.sh keeps the keys directory and its contents owner-only'
     assert.match(entrypoint, /find\s+"\$\{BASE_DIR\}"\s+-type d\s+-exec chmod 775/);
 });
 
+// Every module that writes a file holding a credential, a token, or a recorded
+// request/response. `publicWrites` names the arguments of the writes in that file
+// that are deliberately world-readable — a TLS *certificate*, ~/.aws/config (no
+// secrets, and the AWS CLI writes it 0644 too), the botocore model cache.
+const SECRET_WRITERS = [
+    { file: 'lib/llm/secretStore.js', what: 'the AES wrapping key' },
+    { file: 'lib/llm/llmSettings.js', what: 'the settings file holding sealed keys' },
+    { file: 'lib/certUtils.js', what: 'the TLS private key', publicWrites: ['certPath'] },
+    { file: 'lib/profileUtils.js', what: 'profiles, settings and OAuth client creds' },
+    { file: 'lib/coreUtils.js', what: 'history, favorites, collections and settings artifacts' },
+    { file: 'lib/chat/threadStore.js', what: 'chat transcripts, including tool results' },
+    { file: 'lib/awsCliUtils.js', what: 'the cached SSO access token and the CLI script' },
+    { file: 'lib/sandbox/sandboxStore.js', what: 'saved Sandbox scripts' },
+    { file: 'lib/awsConfigWriter.js', what: '~/.aws/credentials', publicWrites: ['configFile'] }
+];
+
+function stripComments(source) {
+    // Same shape as the other source-inspecting tests here. The [^:] guard keeps
+    // `https://` from being read as a line comment.
+    return source
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+}
+
+// The names of any `const NAME = { … mode: 0oNNN … }` in the file, so a write
+// that passes its options as a shared constant counts as carrying a mode. Reading
+// them out of the source (rather than hardcoding the names here) means renaming
+// the constant does not silently switch this check off.
+function optionsConstantsWithMode(source) {
+    let names = [];
+    let re = /const\s+([A-Za-z0-9_$]+)\s*=\s*\{[^}]*\bmode:\s*0o[0-7]{3}[^}]*\}/g;
+    let match;
+    while ((match = re.exec(source)) !== null) {
+        names.push(match[1]);
+    }
+    return names;
+}
+
 test('every writer of a secret file asks for mode 0600', () => {
-    let writers = [
-        { file: 'lib/llm/secretStore.js', what: 'the AES wrapping key' },
-        { file: 'lib/llm/llmSettings.js', what: 'the settings file holding sealed keys' },
-        { file: 'lib/certUtils.js', what: 'the TLS private key' }
-    ];
-    writers.forEach(function (writer) {
+    SECRET_WRITERS.forEach(function (writer) {
         let source = readRepoFile(writer.file);
         assert.match(source, /mode:\s*0o600/,
             writer.file + ' must write ' + writer.what + ' with mode 0o600');
     });
+});
+
+test('no write in those modules lands at the default mode', () => {
+    // The assertion above is satisfied by a single `mode: 0o600` anywhere in the
+    // file, which is most of a file's writes proving nothing about the rest — a
+    // later `jsonfile.writeFile(f, obj, { spaces: 2 }, cb)` would pass it while
+    // creating a world-readable file. jsonfile's default is 0644 and fs's is 0666
+    // & ~umask, so a write with no mode is the bug, and it is invisible: the
+    // feature works perfectly and only the mode on disk is wrong.
+    let offenders = [];
+
+    SECRET_WRITERS.forEach(function (writer) {
+        let source = stripComments(readRepoFile(writer.file));
+        let allowedConstants = optionsConstantsWithMode(source);
+        let publicWrites = writer.publicWrites || [];
+
+        source.split('\n').forEach(function (line, index) {
+            if (!/\b(?:fs|jsonfile)\.writeFile(?:Sync)?\(/.test(line)) {
+                return;
+            }
+            let carriesMode = /\bmode:\s*0o[0-7]{3}/.test(line) ||
+                allowedConstants.some(function (name) {
+                    return new RegExp('\\b' + name + '\\b').test(line);
+                });
+            let isPublic = publicWrites.some(function (arg) {
+                return new RegExp('\\(\\s*' + arg + '\\b').test(line);
+            });
+            if (!carriesMode && !isPublic) {
+                offenders.push(writer.file + ':' + (index + 1) + ' ' + line.trim());
+            }
+        });
+    });
+
+    assert.deepEqual(offenders, [],
+        'these writes create files under ~/.signbridge (or ~/.aws) at the default ' +
+        'mode: pass { mode: 0o600 }, or add the target to publicWrites if it really ' +
+        'is world-readable');
+});
+
+test('docker-entrypoint.sh repairs the artifact stores, not just profiles', () => {
+    // A mode is honoured only when a file is created, so every install that
+    // predates a writer's mode keeps its old one forever. This pass is the only
+    // thing that fixes those, and it has to cover every store — repairing
+    // profiles/ alone leaves history, favorites and settings wide open.
+    let entrypoint = readRepoFile('docker-entrypoint.sh');
+    let stores = ['profiles', 'history', 'favorites', 'collections', 'settings',
+        'public_client_creds', 'chat', 'llm'];
+    let repairLoop = entrypoint.match(/for store in ([^;]+);/);
+    assert.ok(repairLoop, 'expected a loop repairing the artifact stores to 600');
+    let listed = repairLoop[1].split(/\s+/);
+    stores.forEach(function (store) {
+        assert.ok(listed.includes(store),
+            store + '/ holds credential-bearing artifacts and must be in the repair pass');
+    });
+    // sandboxruns/ workspaces are mounted into the sandbox container, whose
+    // process runs as a different uid and must be able to read the code file.
+    assert.ok(!listed.includes('sandboxruns'),
+        'sandboxruns/ must stay readable by the sandbox container');
 });

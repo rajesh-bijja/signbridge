@@ -112,6 +112,12 @@ conventions below are the short version.
   wrapping key and the sealed settings are `0600` for a reason, and one broad
   `chmod -R` made all three world-readable with nothing failing anywhere.
   `test/llmSecretPermissions.test.js` guards it.
+- **Write every artifact `0600`, and remember a mode only applies on *create*.**
+  Profiles, history, favorites, settings and chat threads all hold credentials or
+  recorded `Authorization` headers, and `jsonfile`'s default is `0644`. Rewriting
+  an existing file keeps its old mode, so a writer's mode fixes new installs only
+  — `docker-entrypoint.sh` has a per-store repair pass for the rest. Add a new
+  store to both. The same test asserts every write carries a mode.
 - If you find a security issue, please open a private report rather than a
   public issue.
 

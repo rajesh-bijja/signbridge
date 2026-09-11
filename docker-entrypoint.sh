@@ -35,10 +35,28 @@ find "${BASE_DIR}" -type d -exec chmod 775 {} +
 chmod 700 "${BASE_DIR}/keys"
 find "${BASE_DIR}/keys" -type f -exec chmod 600 {} +
 
-# Same repair for the sealed-key settings file, which is rewritten 0600 but only
-# on the next save.
-find "${BASE_DIR}/artifacts/userartifacts" -type f -path '*/llm/settings.json' \
-    -exec chmod 600 {} + 2>/dev/null || true
+# Same repair for the artifact stores. Every writer under here asks for 0600 —
+# profiles (IAM keys, SSH private keys, bearer tokens, cached SSO state), history
+# and favorites (whole requests and responses, Authorization headers included),
+# settings (the TinyURL token), chat transcripts, sealed provider keys — but a
+# mode is honoured only when the file is CREATED. Rewriting an existing file keeps
+# its old mode, so an install predating a writer's mode stays wide forever. This
+# is the only thing that fixes those.
+#
+# Scoped to a list rather than the whole tree on purpose: scripts/ holds the AWS
+# CLI scripts this process executes (0700), and sandboxruns/ workspaces are
+# mounted into the sandbox container, whose process is a different uid and must be
+# able to read the code file. Both would break under a blanket 600.
+for store in profiles history favorites collections settings public_client_creds chat llm sandbox; do
+    find "${BASE_DIR}/artifacts/userartifacts" -type f -path "*/${store}/*" \
+        -exec chmod 600 {} + 2>/dev/null || true
+done
+
+# The AWS CLI scripts stay owner-executable; only this process runs them. Excludes
+# the Sandbox saved scripts, which live one level deeper, are never executed
+# directly, and were just set to 600 by the loop above.
+find "${BASE_DIR}/artifacts/userartifacts" -type f -path '*/scripts/*' \
+    ! -path '*/sandbox/scripts/*' -exec chmod 700 {} + 2>/dev/null || true
 
 # Sandbox mode runs user code in a sibling container, which means talking to the
 # host's Docker daemon through a bind-mounted socket. The socket keeps its HOST
