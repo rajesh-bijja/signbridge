@@ -4,9 +4,9 @@
   "description": "MCP server for SignBridge — presign and invoke AWS SigV4 (IAM & SSO) and REST APIs from Claude, Cursor, and other MCP clients.",
   "type": "module",
   "bin": {
-    "signbridge-mcp": "./server.js"
+    "signbridge-mcp": "server.js"
   },
-  "main": "./server.js",
+  "main": "server.js",
   "files": [
     "server.js",
     "tools.mjs",
