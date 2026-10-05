@@ -28,6 +28,6 @@
     "vite": "^6.0.6"
   },
   "overrides": {
-    "dompurify": "^3.4.15"
+    "dompurify": "^3.4.16"
   }
 }
