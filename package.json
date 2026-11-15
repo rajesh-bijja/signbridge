@@ -38,7 +38,7 @@
     "hyparquet-compressors": "^1.1.1",
     "jsonfile": "^6.1.0",
     "jwt-decode": "^4.0.0",
-    "node-forge": "^1.4.0",
+    "node-forge": "^1.4.3",
     "openai": "^7.4.0",
     "properties-reader": "^2.2.0",
     "recursive-readdir": "^2.2.3",
